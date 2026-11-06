@@ -21,6 +21,10 @@ Windows 10 and Windows 11, and translate presentation input into group actions.
 - Preserve title-bar drag, double-click, system buttons, and resizing behavior.
 - Route Quickky tab actions through the group policy rather than directly mutating
   Explorer or synthesizing global keyboard input.
+- Attach the strip to real Explorer chrome, not an independent Quickky browsing
+  window. The `+` button resolves the active tab's current location, opens a new
+  Explorer folder window there, and lets normal capture admit it. The button and
+  folder-launch bridge are not implemented by the read-only controller.
 - Make keyboard navigation and accessible names part of the interaction contract;
   a visual replica alone is not an acceptable functional tab strip.
 - Windows 11 native-tab suppression is the adapter's responsibility. Rendering

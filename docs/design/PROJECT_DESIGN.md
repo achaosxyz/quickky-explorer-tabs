@@ -2,12 +2,12 @@
 
 ## Status and authority
 
-This repository contains a minimal C++17 Win32 application, a CMake executable
-target, a CTest hidden-window smoke test, design contracts, and initial language
-catalogs. The executable opens an empty application window and exits when it is
-closed. It does not attach to or modify Explorer. All Explorer integration,
-tab management, recovery, and settings behavior below remains an unimplemented
-design contract. Other source modules remain reserved with `.gitkeep` files.
+This repository contains a background C++17 Win32 controller, read-only Explorer
+discovery, a pure capture lifecycle and tab model, CMake/CTest targets, design
+contracts, and initial language catalogs. The controller has no independent
+visible window. It observes candidates but never requests attachment or changes
+Explorer windows. Actual tab presentation, native-tab replacement, the current-
+folder `+` action, recovery, and management settings remain unimplemented.
 
 `docs/design/` is the single source of truth for project structure and design.
 This document owns the overall architecture; the linked module documents own
@@ -30,6 +30,11 @@ The accepted requirements are:
   backend or merely cover their pixels. Native tabs must not remain independently
   usable inside a managed window.
 - Automatically collect newly opened Explorer folder windows into the workspace.
+- Run the controller in the background, with tabs attached to real Explorer
+  windows; do not provide an independent Quickky file-manager window.
+- The tab-strip `+` action opens a new Explorer folder window at the active
+  Quickky tab's current location and admits that window through normal capture.
+  Resolve the location at click time, not from the tab's original launch path.
 - Provide an English and Simplified Chinese management interface.
 
 Window uniqueness means one visible managed Explorer workspace in the active
@@ -43,8 +48,7 @@ boundary. Exact supported OS builds are not yet verified.
 
 ## Technology baseline
 
-- C++17 and Win32 for the application; COM is part of the integration baseline
-  but is not initialized by the minimal executable.
+- C++17, Win32, and a single-threaded COM apartment for the controller and probes.
 - Direct2D and DirectWrite for the Quickky tab strip.
 - CMake 3.21 or newer and MSVC with C++17 support for Windows x86_64 builds.
   The local build path uses Visual Studio 2017 Build Tools and its v141 toolset.
@@ -52,8 +56,9 @@ boundary. Exact supported OS builds are not yet verified.
 - UTF-8 JSON catalogs for management-interface localization.
 
 No third-party dependencies, package manager, UI framework, installer, or native
-Explorer private API has been selected. The root `CMakeLists.txt` builds only
-`QuickkyExplorerTabs.exe`; no integration DLL target exists yet.
+Explorer private API has been selected. CMake builds `QuickkyExplorerTabs.exe`,
+the `quickky_core` and `quickky_capture` static libraries, and model/discovery
+test executables when testing is enabled. No integration DLL target exists yet.
 
 ## Module boundaries
 
@@ -68,9 +73,9 @@ Explorer private API has been selected. The root `CMakeLists.txt` builds only
 | `src/settings/` | Management-page settings and locale selection. | [Settings](SETTINGS.md) |
 | `src/common/` | Shared identifiers and narrowly scoped cross-process contracts. | [Common](COMMON.md) |
 
-Only `src/app/` contains runtime code: the minimal entry point and window message
-loop. The other seven source modules are reserved directories. The accepted
-composition assigns capture, group, and settings to the application and Explorer
+`app`, `capture`, `group`, and `common` contain code; `hook`, `explorer`, `chrome`,
+and `settings` remain reserved. The accepted composition assigns capture, group,
+and settings to the application and Explorer
 adapters and chrome to the DLL. Shared definitions belong in `common`; product
 policy does not. IPC transports and integration interfaces remain unspecified.
 
@@ -83,8 +88,12 @@ README.zh-CN.md
 LICENSE
 CMakeLists.txt
 src/app/main.cpp
+src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cpp}
+src/group/group_model.{h,cpp}
+src/common/window_identity.h
 src/{app,capture,group,hook,explorer,chrome,settings,common}/
 resources/locales/{en-US,zh-CN}.json
+tests/{core_tests,discovery_tests}.cpp
 tests/README.md
 docs/design/PROJECT_DESIGN.md
 docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,CHROME,SETTINGS,COMMON}.md
@@ -92,12 +101,25 @@ docs/guides/{DEVELOPMENT,VALIDATION,EXPLORER_TESTING}.md
 ```
 
 The root also contains `.editorconfig` and `.gitignore`. `resources/` contains
-non-code assets; `tests/` documents the executable smoke test and test boundaries.
+non-code assets; `tests/` contains executable checks and documents their boundaries.
 `docs/guides/` contains operating procedures rather than architecture decisions.
 
 ## Data model
 
-No C++ model or wire format is implemented. The accepted conceptual entities are:
+The concrete core contracts are:
+
+- `WindowCandidate`: native handle, process/thread IDs, and process creation time.
+- `WindowIdentity`: a candidate plus a monotonically allocated discovery
+  generation. A removed/reobserved window receives a new generation.
+- `GroupModel`: ordered tab IDs and window identities, with optional active tab.
+  It performs no Win32 operations and does not own or close native windows.
+- `CaptureCoordinator`: tracks discovered, attaching, managed, and restoring
+  records. Successful attachment acknowledgment is the only admission path;
+  each attachment attempt has a unique token to reject late acknowledgments.
+
+No wire format, process injection, or native-window visibility policy is
+implemented. These model types do not constitute successful Explorer capture.
+The remaining conceptual entities are:
 
 - **Explorer window identity:** HWND, owning process/thread, and an attachment
   generation sufficient to distinguish a destroyed window from a reused handle.
@@ -113,17 +135,48 @@ Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their
 first implementation.
 
+## Read-only discovery boundary
+
+`ExplorerWindowProbe` accepts visible, unowned, uncloaked `CabinetWClass` top-level
+windows whose full executable path is the system Explorer path. It checks the
+current user, session, integrity level, and virtual desktop, and fails closed if
+the required identity or desktop queries fail. It records no paths or captions.
+
+`ExplorerDiscovery` installs out-of-context WinEvent observations before the
+initial enumeration, reconciles candidates on relevant events and a bounded
+refresh timer, and coalesces duplicate identities. Removing a candidate means
+it is no longer eligible, not necessarily that its native window was destroyed.
+Observed destroy events force a new identity if the handle has already been
+reused. Generations protect model commands; they are not a Windows guarantee
+that no lifecycle event can ever be missed.
+
+The controller remains message-only. `--snapshot` writes a read-only JSON
+snapshot to redirected standard output; `--observe-ms N` runs a bounded observer;
+`--stop` signals the current session's controller. Snapshot and bounded-observer
+modes do not replace or stop the resident controller. No normal code path begins
+attachment until an Explorer adapter can confirm native-tab replacement and
+recovery. Consequently no window is hidden, regrouped, closed, or injected into.
+
 ## Key flows
 
 The implemented executable flow is:
 
-1. Parse the command line; accept no arguments or the internal `--smoke-test`
-   switch. Reject other arguments with `ERROR_BAD_ARGUMENTS` (160).
-2. Register a Unicode window class and create an ordinary top-level window.
-3. Normally show the empty window and run its message loop until it closes.
-4. In smoke-test mode, leave the window hidden and post `WM_CLOSE`; the same
-   message loop must process destruction and exit successfully. A Win32 failure
-   produces a nonzero exit status. No Explorer window is inspected or modified.
+1. Validate arguments. Normal launch acquires the session-local controller
+   singleton and stop event, using the current user's default object ACLs.
+2. Initialize COM and create a message-only window, never a file-manager window.
+3. Start read-only discovery. Added candidates enter discovered state; removed
+   candidates invalidate that identity. No attachment request is issued.
+4. Reconcile on events and a one-second timer. `--stop` signals the resident;
+   `--observe-ms N` closes its own bounded observer after 1..600000 milliseconds.
+5. `--snapshot` emits candidate identifiers, generation, and the managed count to
+   redirected standard output and exits. `--smoke-test` skips Explorer discovery
+   and closes its own message-only window through the message pump.
+
+Invalid arguments return `ERROR_BAD_ARGUMENTS` (160); setup/discovery failures
+return nonzero. Stop is idempotent when no controller event exists. Normal
+duplicate launch exits without stopping the original controller. Snapshot and
+bounded modes do not acquire or signal the resident singleton. Object-name
+collisions or inaccessible objects fail rather than changing permissions.
 
 The unimplemented Explorer behavior contracts are:
 

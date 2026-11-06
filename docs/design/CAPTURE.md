@@ -2,7 +2,9 @@
 
 ## Status
 
-`src/capture/` is reserved; no hooks or discovery logic exist.
+The module contains read-only Explorer discovery and a pure capture lifecycle
+coordinator. No process injection, native-tab replacement, or actual admission
+of Explorer windows is enabled by the application.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
@@ -24,6 +26,16 @@ Quickky group without losing the original window on failure.
 - Model discovery, attaching, managed, restoring, and released states explicitly
   when code is introduced. Only confirmed attachment can become managed.
 - Preserve the original window on rejection, timeout, or failed attachment.
+- Every attachment attempt has its own request token. Late results from an old
+  attempt or window generation cannot admit a tab. Failure/timeout returns the
+  record to discovered without affecting any native window.
+- Restore keeps group membership until acknowledgment. Failed restore returns
+  to managed; successful restore or window loss removes the corresponding tab.
+- Initial enumeration plus WinEvent notifications and periodic reconciliation
+  maintain the observed eligible set. All callbacks run on the owning message
+  thread. Probe and change-handler exceptions fail discovery instead of unwinding
+  through a Win32 callback. An injected inspector is a test seam, not a production
+  bypass option for Explorer ownership checks.
 
 ## Boundary
 

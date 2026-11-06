@@ -2,9 +2,11 @@
 
 ## Current scope
 
-The repository builds a minimal C++17 Windows x86_64 GUI executable and registers
-a hidden-window CTest smoke test. Other source modules remain reserved. The
-executable has no Explorer integration or management page.
+The repository builds a background C++17 Windows x86_64 controller, core/capture
+libraries, model tests, synthetic Win32 discovery tests, and a message-only
+window smoke test. The controller observes eligible Explorer windows read-only;
+it does not attach, display tabs, or modify Explorer. Read-only host observations
+are not evidence of safe injection, native-tab replacement, or recovery.
 
 ## Procedure
 
@@ -63,17 +65,38 @@ Outputs are `build/vs2017-x64/Debug/QuickkyExplorerTabs.exe` and
 `build/vs2017-x64/Release/QuickkyExplorerTabs.exe`. `build/` is ignored by Git.
 No integration DLL or installer is built.
 
-## Run the minimal application
+## Run the background controller
 
 ```powershell
 Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe
 ```
 
-Normal launch shows a standard empty window; close it with the window's close
-button. CTest instead passes `--smoke-test` to create and close the window without
-showing it. Both paths leave Explorer untouched. Other arguments return exit
-status 160 (`ERROR_BAD_ARGUMENTS`). Pass `-DBUILD_TESTING=OFF` at configuration
-time only when intentionally building without the smoke test.
+Normal launch stays in the background with no independent file-manager window.
+To stop it, run:
+
+```powershell
+Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--stop' -Wait
+```
+
+These diagnostics only read Explorer metadata and never hide windows, inject a
+DLL, or claim successful tab admission:
+
+```powershell
+Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--snapshot' -Wait -RedirectStandardOutput .\build\snapshot.json
+Get-Content .\build\snapshot.json
+Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--observe-ms 1000' -Wait
+```
+
+Snapshots contain identifiers, generations, and the managed count, not titles or
+folder paths. Missing identity/desktop queries fail closed. Do not elevate the
+controller: a different integrity level excludes ordinary Explorer candidates.
+UAC is not needed for these operations.
+
+CTest runs `core.model`, `capture.discovery`, and `app.smoke`. Discovery tests use
+hidden, test-owned windows and a test-local inspector, not real Explorer
+attachment. `app.smoke` skips discovery and closes its message-only window.
+Invalid arguments return 160 (`ERROR_BAD_ARGUMENTS`). Use `"-DBUILD_TESTING=OFF"`
+in a separate build directory only when intentionally omitting test executables.
 
 For Explorer integration, follow the
 [dedicated testing procedure](EXPLORER_TESTING.md) before any live attachment.

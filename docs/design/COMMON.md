@@ -2,7 +2,8 @@
 
 ## Status
 
-`src/common/` is reserved; no shared C++ types or IPC protocol exists.
+`window_identity.h` defines `NativeWindow`, `TabId`, `WindowCandidate`, and
+`WindowIdentity` for the implemented discovery and models. No IPC protocol exists.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
@@ -21,6 +22,9 @@ such as tab identity, attachment identity, and cross-process request/result data
   correlation, and attachment acknowledgment with the first concrete transport.
 - Give an attachment identity enough lifetime information to reject stale commands
   after a window is destroyed, reused, or Explorer restarts.
+- The current identity includes process creation time and a controller-local
+  discovery generation. It is an in-process model identifier, not an authorized
+  cross-process protocol or a guarantee that every native lifetime was observed.
 - Reject incompatible protocol versions instead of attempting unsafe attachment.
 - Do not log folder paths or other sensitive user data by default.
 

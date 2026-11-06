@@ -1,13 +1,22 @@
 # Tests
 
-CTest registers `app.smoke` when `BUILD_TESTING` is enabled (the default).
-It starts `QuickkyExplorerTabs --smoke-test`, which creates a hidden application
-window, posts its close message, runs the normal message loop, and exits with
-status zero. CTest fails on a nonzero status or a ten-second timeout.
+CTest registers three checks when `BUILD_TESTING` is enabled (the default).
+All checks retain explicit failure handling in Release builds; no third-party
+test framework is required. CTest enforces a ten-second timeout for each check.
 
-This test exercises actual Win32 application startup and teardown. It does not
-inspect or modify Explorer, display a window, validate visible presentation, or
-prove any tab-management functionality. There are no policy unit tests yet.
+- `core.model`: thirteen groups of pure tests for tab ordering, stable IDs,
+  selection/removal, duplicate events, candidate lifetime changes, acknowledgment
+  tokens, failed attempts, stale completions, restoration, and foreground policy.
+- `capture.discovery`: real WinEvent/message delivery on hidden, test-owned
+  `CabinetWClass` fixtures through a test-local inspector; covers initial scan,
+  duplicate scans, creation/destruction, changed identity, eligibility removal,
+  stop/restart, callback exceptions, and production-probe rejection checks.
+- `app.smoke`: creates a message-only window, posts its close request, dispatches
+  destruction, and exits zero without inspecting or modifying Explorer.
+
+These tests do not prove native-tab replacement, visible UI, actual attachment,
+or native window recovery. Read-only snapshots and bounded observation on the
+development host are separate from these synthetic tests.
 
 See [Development](../docs/guides/DEVELOPMENT.md) for configure/build/test commands.
 

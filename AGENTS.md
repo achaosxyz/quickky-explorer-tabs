@@ -6,44 +6,51 @@ Quickky Explorer Tabs is a Windows File Explorer enhancement for users who want
 folder windows collected into a single tabbed workspace. Its accepted scope
 includes Quickky-owned tabs on Windows 10/11 and replacement of Windows 11 native
 tab behavior, with an English/Simplified Chinese management interface. This
-repository contains a minimal C++17 Win32 executable, a CMake build and CTest
-smoke test, design documents, and initial language catalogs. Explorer integration
-and management features are not implemented.
+repository contains a background C++17 controller, read-only Explorer discovery,
+capture/group models, CMake/CTest checks, design documents, and language catalogs.
+Actual window attachment, tab UI, native-tab replacement, the current-folder `+`
+action, and management features are not implemented.
 
 ## Core logic
 
-1. Parse application arguments, accepting normal launch or `--smoke-test`.
-2. Create an ordinary empty Win32 window and run its message loop.
-3. Close normally on user request, or automatically without showing the window
-   in smoke-test mode; return a nonzero status on failure or invalid arguments.
+1. Validate arguments and run a message-only background controller, without an
+   independent Quickky browsing window. Normal duplicate launch exits harmlessly.
+2. Discover eligible Explorer windows by initial enumeration, WinEvent observation,
+   and periodic reconciliation. Verify process, user, session, integrity, and
+   virtual-desktop identity; do not hide, close, or modify any candidate.
+3. Feed observed lifetimes into the capture model. Real admission is disabled;
+   only a matching successful attachment acknowledgment could create a tab.
+4. Support `--stop`, read-only `--snapshot`, bounded `--observe-ms N`, and a
+   discovery-free `--smoke-test`. Invalid arguments return status 160.
 
-No Explorer window is inspected or modified. Do not present capture, native-tab
-replacement, grouping, recovery, or locale selection as working features.
+Do not present observation or model tests as working native-tab replacement,
+visible grouping, recovery, or locale selection. The `+` requirement is to open
+the active Explorer tab's current location and capture the resulting window.
 
 ## Modules
 
-`src/app/` contains runtime code; the other source modules remain reserved:
+`app`, `capture`, `group`, and `common` contain code; the other modules are reserved:
 
-- `src/app/`: Minimal Win32 entry point and window-message lifecycle.
+- `src/app/`: Background controller, local lifetime controls, and diagnostics.
 - `src/capture/`: Explorer folder-window discovery and capture coordination.
 - `src/group/`: Quickky tab ownership and active-workspace state.
 - `src/hook/`: Target-thread bootstrap, message bridge, and local recovery.
 - `src/explorer/`: Explorer adaptation and native-tab replacement boundary.
 - `src/chrome/`: Quickky tab presentation and input boundary.
 - `src/settings/`: Management preferences and localization boundary.
-- `src/common/`: Minimal cross-module identifiers and shared IPC contracts.
+- `src/common/`: Window/tab identity types; an IPC protocol is not implemented.
 
 ## Repository directories
 
 - `src/`: Native application source and reserved integration modules.
 - `resources/locales/`: Initial `en-US` and `zh-CN` management-interface catalogs.
-- `tests/`: Executable smoke-test scope and integration validation boundaries.
+- `tests/`: Pure model tests, synthetic Win32 discovery tests, and test boundaries.
 - `docs/design/`: Overall architecture and individual module contracts.
 - `docs/guides/`: Development and validation standard operating procedures.
 - `README.md`: English user-facing features, availability, and usage.
 - `README.zh-CN.md`: Equivalent Simplified Chinese user documentation.
 - `LICENSE`: MIT license terms for this open-source project.
-- `CMakeLists.txt`: Windows x86_64 executable target and CTest smoke check.
+- `CMakeLists.txt`: Windows x86_64 controller/core targets and CTest checks.
 
 ## Single source of truth
 
@@ -92,6 +99,10 @@ replacement, grouping, recovery, or locale selection as working features.
   frameworks, or abstractions without a concrete requirement.
 - Respect Explorer-only scope. Never enforce a single workspace by terminating
   Explorer processes or discarding the user's tabs/windows.
+- Keep the controller background-only; do not add an independent Quickky file
+  manager. Do not run ordinary Explorer discovery elevated or request UAC without
+  a concrete privileged operation. Read-only observation does not authorize
+  injection or visibility changes on the development desktop.
 - Do not silently replace Quickky-owned tabs with a native Explorer tab backend.
 - Perform validation proportional to risk. Report actual results and limitations;
   documentation checks do not prove native builds or Explorer compatibility.
