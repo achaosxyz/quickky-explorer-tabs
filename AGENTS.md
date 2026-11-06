@@ -6,21 +6,25 @@ Quickky Explorer Tabs is a Windows File Explorer enhancement for users who want
 folder windows collected into a single tabbed workspace. Its accepted scope
 includes Quickky-owned tabs on Windows 10/11 and replacement of Windows 11 native
 tab behavior, with an English/Simplified Chinese management interface. This
-repository currently contains only the scaffold, design documents, and initial
-language catalogs; no runtime application exists.
+repository contains a minimal C++17 Win32 executable, a CMake build and CTest
+smoke test, design documents, and initial language catalogs. Explorer integration
+and management features are not implemented.
 
 ## Core logic
 
-No runtime core logic is implemented. Do not present capture, native-tab
+1. Parse application arguments, accepting normal launch or `--smoke-test`.
+2. Create an ordinary empty Win32 window and run its message loop.
+3. Close normally on user request, or automatically without showing the window
+   in smoke-test mode; return a nonzero status on failure or invalid arguments.
+
+No Explorer window is inspected or modified. Do not present capture, native-tab
 replacement, grouping, recovery, or locale selection as working features.
-The accepted contracts and unverified mechanisms are documented in the overall
-design, not duplicated here as an implemented execution flow.
 
 ## Modules
 
-All listed directories exist but contain no runtime code:
+`src/app/` contains runtime code; the other source modules remain reserved:
 
-- `src/app/`: Application composition and controller-side communication boundary.
+- `src/app/`: Minimal Win32 entry point and window-message lifecycle.
 - `src/capture/`: Explorer folder-window discovery and capture coordination.
 - `src/group/`: Quickky tab ownership and active-workspace state.
 - `src/hook/`: Target-thread bootstrap, message bridge, and local recovery.
@@ -31,14 +35,15 @@ All listed directories exist but contain no runtime code:
 
 ## Repository directories
 
-- `src/`: Reserved native application and DLL source modules.
+- `src/`: Native application source and reserved integration modules.
 - `resources/locales/`: Initial `en-US` and `zh-CN` management-interface catalogs.
-- `tests/`: Validation scope documentation; no automated tests exist yet.
+- `tests/`: Executable smoke-test scope and integration validation boundaries.
 - `docs/design/`: Overall architecture and individual module contracts.
 - `docs/guides/`: Development and validation standard operating procedures.
 - `README.md`: English user-facing features, availability, and usage.
 - `README.zh-CN.md`: Equivalent Simplified Chinese user documentation.
 - `LICENSE`: MIT license terms for this open-source project.
+- `CMakeLists.txt`: Windows x86_64 executable target and CTest smoke check.
 
 ## Single source of truth
 
@@ -71,6 +76,8 @@ All listed directories exist but contain no runtime code:
 
 ## Development rules
 
+- Use C++17 for native code; do not require C++20 or a newer toolchain without
+  a concrete, agreed requirement. The local build uses VS 2017/v141.
 - Use English for development/design documents, code comments, identifiers,
   issue/PR text, and commit messages. Use Conventional Commits, for example
   `feat: add capture policy tests` or `docs: clarify adapter boundaries`.
@@ -112,7 +119,8 @@ All listed directories exist but contain no runtime code:
 - Unconfirmed dependencies or future-proofing abstractions.
 - Treating an undefined or unverified design as an established fact.
 - Claiming native-tab replacement from visual masking alone.
-- Live Explorer integration tests on an unscoped daily desktop.
+- Live Explorer integration tests on an unscoped daily desktop. The application's
+  hidden-window smoke test does not attach to Explorer and is outside that scope.
 - Changing the MIT license without explicit maintainer authorization.
 
 ## SOP index

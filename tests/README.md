@@ -1,6 +1,15 @@
 # Tests
 
-No automated tests or runnable test targets exist in this scaffold.
+CTest registers `app.smoke` when `BUILD_TESTING` is enabled (the default).
+It starts `QuickkyExplorerTabs --smoke-test`, which creates a hidden application
+window, posts its close message, runs the normal message loop, and exits with
+status zero. CTest fails on a nonzero status or a ten-second timeout.
+
+This test exercises actual Win32 application startup and teardown. It does not
+inspect or modify Explorer, display a window, validate visible presentation, or
+prove any tab-management functionality. There are no policy unit tests yet.
+
+See [Development](../docs/guides/DEVELOPMENT.md) for configure/build/test commands.
 
 The accepted validation boundary separates pure policy tests (capture lifecycle,
 tab ordering/selection, identity handling, and locale resolution) from live

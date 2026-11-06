@@ -2,11 +2,12 @@
 
 ## Status and authority
 
-This repository contains the project scaffold, accepted product requirements,
-module boundaries, and initial language catalogs. It does not contain an
-executable, Explorer integration, a build target, or automated runtime tests.
-All runtime behavior described below is a design contract, not an implemented
-or verified feature. Source directories are reserved with `.gitkeep` files.
+This repository contains a minimal C++17 Win32 application, a CMake executable
+target, a CTest hidden-window smoke test, design contracts, and initial language
+catalogs. The executable opens an empty application window and exits when it is
+closed. It does not attach to or modify Explorer. All Explorer integration,
+tab management, recovery, and settings behavior below remains an unimplemented
+design contract. Other source modules remain reserved with `.gitkeep` files.
 
 `docs/design/` is the single source of truth for project structure and design.
 This document owns the overall architecture; the linked module documents own
@@ -42,14 +43,17 @@ boundary. Exact supported OS builds are not yet verified.
 
 ## Technology baseline
 
-- C++20, Win32, and COM for the application and Explorer integration.
+- C++17 and Win32 for the application; COM is part of the integration baseline
+  but is not initialized by the minimal executable.
 - Direct2D and DirectWrite for the Quickky tab strip.
-- CMake and MSVC for the native build once source targets exist.
+- CMake 3.21 or newer and MSVC with C++17 support for Windows x86_64 builds.
+  The local build path uses Visual Studio 2017 Build Tools and its v141 toolset.
 - An application process and an Explorer-only integration DLL.
 - UTF-8 JSON catalogs for management-interface localization.
 
 No third-party dependencies, package manager, UI framework, installer, or native
-Explorer private API has been selected. There are currently no build files.
+Explorer private API has been selected. The root `CMakeLists.txt` builds only
+`QuickkyExplorerTabs.exe`; no integration DLL target exists yet.
 
 ## Module boundaries
 
@@ -64,10 +68,11 @@ Explorer private API has been selected. There are currently no build files.
 | `src/settings/` | Management-page settings and locale selection. | [Settings](SETTINGS.md) |
 | `src/common/` | Shared identifiers and narrowly scoped cross-process contracts. | [Common](COMMON.md) |
 
-All eight source modules are reserved directories, not implemented components.
-The application composes capture, group, and settings responsibilities. The DLL
-uses Explorer adapters and tab chrome. Shared definitions belong in `common`;
-product policy does not. IPC transports and C++ interfaces remain unspecified.
+Only `src/app/` contains runtime code: the minimal entry point and window message
+loop. The other seven source modules are reserved directories. The accepted
+composition assigns capture, group, and settings to the application and Explorer
+adapters and chrome to the DLL. Shared definitions belong in `common`; product
+policy does not. IPC transports and integration interfaces remain unspecified.
 
 ## Repository layout
 
@@ -76,6 +81,8 @@ AGENTS.md
 README.md
 README.zh-CN.md
 LICENSE
+CMakeLists.txt
+src/app/main.cpp
 src/{app,capture,group,hook,explorer,chrome,settings,common}/
 resources/locales/{en-US,zh-CN}.json
 tests/README.md
@@ -85,7 +92,7 @@ docs/guides/{DEVELOPMENT,VALIDATION,EXPLORER_TESTING}.md
 ```
 
 The root also contains `.editorconfig` and `.gitignore`. `resources/` contains
-non-code assets; `tests/` documents the validation boundary until tests exist.
+non-code assets; `tests/` documents the executable smoke test and test boundaries.
 `docs/guides/` contains operating procedures rather than architecture decisions.
 
 ## Data model
@@ -108,7 +115,17 @@ first implementation.
 
 ## Key flows
 
-There is no implemented runtime flow. The accepted behavior contracts are:
+The implemented executable flow is:
+
+1. Parse the command line; accept no arguments or the internal `--smoke-test`
+   switch. Reject other arguments with `ERROR_BAD_ARGUMENTS` (160).
+2. Register a Unicode window class and create an ordinary top-level window.
+3. Normally show the empty window and run its message loop until it closes.
+4. In smoke-test mode, leave the window hidden and post `WM_CLOSE`; the same
+   message loop must process destruction and exit successfully. A Win32 failure
+   produces a nonzero exit status. No Explorer window is inspected or modified.
+
+The unimplemented Explorer behavior contracts are:
 
 1. Discover an eligible Explorer folder window and validate its identity.
 2. Request attachment on its UI thread; verify the Explorer adapter can safely

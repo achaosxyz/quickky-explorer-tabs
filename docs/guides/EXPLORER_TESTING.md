@@ -2,8 +2,8 @@
 
 ## Preconditions
 
-No Explorer integration executable exists in the scaffold. This procedure does
-not authorize injecting a DLL into the user's daily Explorer process. Execute
+The minimal executable does not implement Explorer integration. This procedure
+does not authorize injecting a DLL into the user's daily Explorer process. Execute
 live integration checks only for an implemented change in an explicitly scoped,
 disposable Windows test environment with a recovery path.
 
@@ -37,4 +37,4 @@ disposable Windows test environment with a recovery path.
 Record pass/fail/not-tested for each applicable case, the exact tested builds,
 and observed limitations. Do not infer support for other builds. Report failure
 of native-tab replacement or recovery as a blocking integration issue, not a
-cosmetic defect. No cases in this procedure have been executed by initialization.
+cosmetic defect. No Explorer integration cases in this procedure have been executed.

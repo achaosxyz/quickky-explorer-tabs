@@ -5,9 +5,10 @@
 A tabbed workspace for Windows File Explorer, designed to collect newly opened
 folder windows into one place.
 
-> **Not available for use yet.** The project is at its initial setup stage. There
-> is no working application or installable release. The features below describe
-> the intended experience, not currently available functionality.
+> **Not ready for daily use.** The current application only opens an empty
+> window. Tabs, automatic folder-window collection, and the management interface
+> are not implemented, and there is no installable release. The features below
+> describe the intended experience, not currently available functionality.
 
 ## The experience
 
@@ -31,9 +32,10 @@ desktop. It does not include the desktop itself, the taskbar, or Open/Save dialo
 
 ## Getting started
 
-There is nothing to install or launch yet. Installation and usage instructions
-will be provided with a usable release. Do not use this project to modify your
-Explorer configuration at this stage.
+There is no installer or usable tabbed workspace yet. If you have the current
+`QuickkyExplorerTabs.exe`, launching it opens an empty window; close that window
+to exit. It does not change File Explorer or its configuration. Installation and
+full usage instructions will accompany a usable release.
 
 ## License
 
