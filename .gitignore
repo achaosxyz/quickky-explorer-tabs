@@ -1,0 +1,9 @@
+# Local native build output
+/build/
+/out/
+/CMakeUserPresets.json
+
+# Local IDE state
+/.vs/
+*.suo
+*.user

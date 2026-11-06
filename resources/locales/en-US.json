@@ -1,0 +1,16 @@
+{
+  "settings": {
+    "title": "Settings",
+    "language": {
+      "label": "Display language",
+      "options": {
+        "en-US": "English",
+        "zh-CN": "Simplified Chinese"
+      }
+    },
+    "actions": {
+      "apply": "Apply",
+      "cancel": "Cancel"
+    }
+  }
+}
