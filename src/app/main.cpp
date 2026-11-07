@@ -1,6 +1,10 @@
 #include "capture/capture_coordinator.h"
 #include "capture/explorer_discovery.h"
 #include "capture/explorer_window_probe.h"
+#include "app/tray_icon.h"
+#include "explorer/folder_location.h"
+#include "group/workspace_controller.h"
+#include "settings/preferences.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -24,12 +28,31 @@ constexpr UINT_PTR kRefreshTimer = 1;
 constexpr UINT_PTR kExitTimer = 2;
 using Handle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
-enum class Mode { Resident, Snapshot, Observe, Smoke, Stop };
+enum class Mode { Resident, Snapshot, Observe, Smoke, Stop, CaptureTest };
 
 struct Options {
     Mode mode = Mode::Resident;
     UINT duration = 0;
+    std::wstring root;
 };
+
+struct ControllerState {
+    quickky::WorkspaceController* workspace = nullptr;
+    quickky::TrayIcon* tray = nullptr;
+    HANDLE stop = nullptr;
+};
+
+struct ControllerWindowLifetime {
+    HWND window;
+    ControllerState* state;
+    ~ControllerWindowLifetime()
+    {
+        if (GetWindowLongPtrW(window, GWLP_USERDATA) == reinterpret_cast<LONG_PTR>(state)) {
+            DestroyWindow(window);
+        }
+    }
+};
+constexpr UINT kInputReady = WM_APP + 22;
 
 struct Apartment {
     HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -57,11 +80,32 @@ std::optional<Options> ParseOptions(int count, wchar_t** arguments)
         }
         if (duration != 0) { return Options{Mode::Observe, duration}; }
     }
+    if (count == 3 && std::wstring_view(arguments[1]) == L"--capture-test-root") {
+        const auto root = quickky::NormalizeDirectory(arguments[2]);
+        if (root) return Options{Mode::CaptureTest, 0, *root};
+    }
     return std::nullopt;
 }
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
+    if (message == WM_NCCREATE) {
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(
+            reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams));
+    }
+    const auto state = reinterpret_cast<ControllerState*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_TIMER && state && state->stop &&
+        WaitForSingleObject(state->stop, 0) == WAIT_OBJECT_0) {
+        if (state->tray) state->tray->CancelPopups();
+        return 0;
+    }
+    if (message == WM_COPYDATA && state && state->workspace) {
+        try {
+            if (!state->workspace->QueueInput(wparam, lparam)) return 0;
+            PostMessageW(window, kInputReady, 0, 0);
+            return 1;
+        } catch (...) { return 0; }
+    }
     if (message == WM_DESTROY) {
         PostQuitMessage(EXIT_SUCCESS);
         return 0;
@@ -112,7 +156,8 @@ int Run(HINSTANCE instance, const Options& options)
 
     Handle singleton(nullptr, CloseHandle);
     Handle stop(nullptr, CloseHandle);
-    if (options.mode == Mode::Resident) {
+    const bool resident = options.mode == Mode::Resident || options.mode == Mode::CaptureTest;
+    if (resident) {
         singleton.reset(CreateMutexW(nullptr, FALSE, kMutexName));
         const auto error = GetLastError();
         if (!singleton) { return EXIT_FAILURE; }
@@ -130,16 +175,23 @@ int Run(HINSTANCE instance, const Options& options)
     window_class.lpszClassName = kWindowClass;
     if (RegisterClassW(&window_class) == 0) { return EXIT_FAILURE; }
 
+    ControllerState state;
+    state.stop = stop.get();
     const HWND window = CreateWindowExW(0, kWindowClass, L"", 0,
-        0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, nullptr);
+        0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, &state);
     if (window == nullptr) { return EXIT_FAILURE; }
+    const ControllerWindowLifetime endpoint{window, &state};
 
     quickky::GroupModel group;
     quickky::CaptureCoordinator capture(group);
     quickky::ExplorerWindowProbe probe;
     quickky::ExplorerDiscovery discovery(
         [&probe](HWND candidate) { return probe.Inspect(candidate); },
-        [&capture](const quickky::WindowChange& change) {
+        [&capture, &state](const quickky::WindowChange& change) {
+            const auto existing = capture.Find(change.window.handle);
+            if (state.workspace && existing &&
+                (existing->state == quickky::CaptureState::Managed ||
+                 existing->state == quickky::CaptureState::Restoring)) return;
             if (change.kind == quickky::WindowChangeKind::Added) {
                 capture.Observe(change.window);
             } else if (const auto record = capture.Find(change.window.handle);
@@ -152,6 +204,26 @@ int Run(HINSTANCE instance, const Options& options)
                 }
             }
         });
+    quickky::TrayIcon tray;
+    quickky::HookLibrary library;
+    std::unique_ptr<quickky::WorkspaceController> workspace;
+    struct ReceiverLifetime {
+        ControllerState& state;
+        ~ReceiverLifetime() { state.workspace = nullptr; state.tray = nullptr; }
+    } receiver{state};
+    state.tray = &tray;
+    const auto disable = [&]() {
+        state.workspace = nullptr;
+        workspace.reset();
+    };
+    const auto enable = [&]() {
+        auto next = std::make_unique<quickky::WorkspaceController>(window, capture, group, probe, library, options.root);
+        if (!next->Initialize()) return false;
+        workspace = std::move(next);
+        state.workspace = workspace.get();
+        if (!workspace->Refresh(discovery.windows())) { disable(); return false; }
+        return true;
+    };
 
     if (options.mode == Mode::Smoke) {
         if (!PostMessageW(window, WM_CLOSE, 0, 0)) { return EXIT_FAILURE; }
@@ -159,6 +231,10 @@ int Run(HINSTANCE instance, const Options& options)
         if (!probe.Initialize() || !discovery.Start()) { return EXIT_FAILURE; }
         if (options.mode == Mode::Snapshot) {
             return WriteSnapshot(discovery, capture, group) ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
+        if (resident && !tray.Create(instance, window)) return EXIT_FAILURE;
+        if (options.mode == Mode::CaptureTest || (resident && quickky::TabsEnabled())) {
+            if (!enable()) return EXIT_FAILURE;
         }
         if (SetTimer(window, kRefreshTimer, 1000, nullptr) == 0) { return EXIT_FAILURE; }
         if (options.mode == Mode::Observe
@@ -177,14 +253,36 @@ int Run(HINSTANCE instance, const Options& options)
 
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            // Reconciliation can outlast the timer interval. A continually busy
+            // queue must not starve the stop event until the outer wait resumes.
+            if (stop_handle && WaitForSingleObject(stop_handle, 0) == WAIT_OBJECT_0) return EXIT_SUCCESS;
             if (message.message == WM_QUIT) { return static_cast<int>(message.wParam); }
             if (message.hwnd == window && message.message == WM_TIMER) {
                 if (message.wParam == kRefreshTimer && !discovery.Refresh()) { return EXIT_FAILURE; }
+                if (message.wParam == kRefreshTimer && workspace && !workspace->Refresh(discovery.windows())) {
+                    disable();
+                }
                 if (message.wParam == kExitTimer) { DestroyWindow(window); }
+            } else if (message.hwnd == window && message.message == quickky::kTrayMenuMessage && resident) {
+                const auto action = tray.ShowMenu(workspace != nullptr);
+                if (action == quickky::TrayAction::Startup) {
+                    if (!quickky::SetStartupEnabled(!quickky::StartupEnabled())) MessageBeep(MB_ICONERROR);
+                } else if (action == quickky::TrayAction::Tabs) {
+                    const bool enabled = workspace == nullptr;
+                    if (enabled && !enable()) { MessageBeep(MB_ICONERROR); continue; }
+                    if (options.mode != Mode::CaptureTest && !quickky::SetTabsEnabled(enabled)) {
+                        if (enabled) disable();
+                        MessageBeep(MB_ICONERROR);
+                        continue;
+                    }
+                    if (!enabled) disable();
+                } else if (action == quickky::TrayAction::About) tray.ShowAbout();
+                else if (action == quickky::TrayAction::Exit) return EXIT_SUCCESS;
             } else {
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
+            if (workspace && !workspace->ProcessInput()) disable();
             if (discovery.failed()) { return EXIT_FAILURE; }
         }
     }

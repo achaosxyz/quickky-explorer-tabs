@@ -20,20 +20,21 @@
    `README.zh-CN.md` and Chinese localization values. Check both user READMEs for
    equivalent feature and availability statements.
 5. Confirm every source directory is represented in the overall design and that
-   documentation distinguishes the working bootstrap/build from unimplemented
-   Explorer integration, tabs, recovery, and settings.
+   documentation distinguishes implemented experimental integration from
+   verified host behavior and remaining compatibility gates.
 
 ## Code changes
 
 Run the Debug/Release build and CTest commands from
 [Development](DEVELOPMENT.md). Require `core.model`, `capture.discovery`, and
-`app.smoke` to pass. The smoke test must close its message-only window before
+`explorer.native_guard`, `workspace.bridge`, and `app.smoke` to pass. The smoke
+test must close its message-only window before
 its timeout. Discovery fixtures are hidden windows in the test process, not
 real Explorer attachment. Check invalid arguments return 160 and bounded modes
 exit without leaving a running application.
 
 Read-only snapshot/observation may run on the development desktop. Confirm the
-output contains no captions or folder paths, real managed count remains zero,
+output contains no captions or folder paths, diagnostic managed count remains zero,
 and no Explorer window is modified. Resident/duplicate/stop tests must first
 exclude an existing controller and clean up only the process started by the test.
 Do not interpret these observations or pure acknowledgment simulations as live
@@ -41,10 +42,23 @@ window capture. Keep mutating integration tests separate.
 Use [Explorer testing](EXPLORER_TESTING.md) for OS-dependent behavior; a clean
 compile does not validate shell compatibility or recovery.
 
+## Release tooling
+
+For release tooling, run `./scripts/test-release.ps1` and the package build in
+[Release](RELEASE.md). Inspect the ZIP contents and version resources. Script
+checks use local fixture repositories and a mocked GitHub CLI; they must not
+publish or mutate the real repository's refs. The workflow minimum is
+`app.smoke` plus a second smoke run from the extracted ZIP. This is not the
+full integration test suite or proof of clean-machine runtime availability.
+
 ## Report
 
 Report the changed boundary, checks actually executed, their results, and
 unverified behavior. Native builds, pure models, and synthetic discovery tests are available;
 they do not prove visible presentation or Explorer compatibility. Report those
-integration checks as unverified until they are actually implemented and tested.
+integration checks as unverified unless the specific runtime path/build was
+actually tested. Review critical class ownership/thread contracts, HWND lifetime
+binding, reentrant callbacks, bounded IPC, and cancellation-before-restoration.
+After fixing a review finding, review the changed path again; if that review
+finds a defect, fix it and perform another review before completion.
 Do not stage, commit, or publish merely to run a review.

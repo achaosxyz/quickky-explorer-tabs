@@ -1,45 +1,110 @@
-# Quickky Explorer Tabs
+<p align="center">
+  <img src="resources/logo.png" width="96" height="96" alt="Quickky Explorer Tabs logo">
+</p>
 
-[English](README.md) | [Simplified Chinese](README.zh-CN.md)
+<h1 align="center">Quickky Explorer Tabs</h1>
 
-A tabbed workspace for Windows File Explorer, designed to collect newly opened
-folder windows into one place.
+<p align="center">Your Explorer. One workspace. Your own tabs.</p>
 
-> **Not ready for daily use.** The application runs in the background and only
-> observes Explorer windows. It does not display tabs, collect windows, replace
-> native tabs, or provide a management interface yet. There is no installable
-> release. The features below describe the intended experience.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/preview-experimental-orange" alt="Experimental preview"></a>
+  <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">
+</p>
 
-## The experience
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>
 
-- **Keep folders together.** Newly opened File Explorer folder windows join the
-  same tabbed workspace instead of remaining separate windows.
-- **Use the Explorer you know.** Keep File Explorer's folder browsing experience
-  rather than switch to a different file manager or a separate Quickky window.
-- **Open beside your current folder.** The tab-strip `+` action opens another
-  Explorer window at the active tab's current folder and collects it as a tab.
-- **Get consistent tabs on Windows 10 and Windows 11.** Quickky provides its own
-  tabs with a Windows 11-inspired appearance. On Windows 11, they replace the
-  built-in tab controls rather than add a second row of tabs.
-- **Choose your language.** The management interface is designed for English and
-  Simplified Chinese.
+Quickky brings newly opened File Explorer folder windows together as tabs,
+right inside Explorer. Keep the file manager you already know, without another
+browsing window or a second application to manage your files.
 
-## Windows support
+> **This is an experimental preview, not ready for daily use.** Basic grouping
+> has been tested on Windows 10 build 19045 and one Windows 11 configuration.
+> General Windows compatibility is not yet verified.
+> Unsupported configurations are left unmanaged; important windows should not be
+> used for testing.
 
-The target is Windows 10 and Windows 11 on x86_64 PCs. Specific Windows versions
-have not yet been verified.
+## Features
 
-The workspace is scoped to Explorer folder windows on the current virtual
-desktop. It does not include the desktop itself, the taskbar, or Open/Save dialogs.
+- Windows 11 keeps its native tab bar, without a second bar drawn over it.
+- Windows 10 rectangular tabs, with maximize, minimize, restore, and window recovery.
+- Automatic collection of eligible new folder windows into one workspace.
+- Switch folders by selecting a tab; close a tab with its close button.
+- Open another tab at the active folder's **current** location with **+**.
+- Windows 11 groups stay in Explorer when Quickky is disabled or exits.
+- Run in the notification area, with no independent browsing window.
+- English and Simplified Chinese tray menus, following the Windows UI language.
 
 ## Getting started
 
-There is no installer or usable tabbed workspace yet. If you have the current
-`QuickkyExplorerTabs.exe`, launching it starts a background observer with no
-independent window. Run `QuickkyExplorerTabs.exe --stop` to exit. It does not
-change File Explorer or its configuration and does not need administrator rights.
-Installation and full tab usage instructions require a usable release.
+Extract all files from `QTabs_vX.X.X.zip`. The required Visual C++ runtime DLLs
+are included; no separate runtime installation is needed. Keep all extracted
+DLLs beside `QTabs.exe`. Launch the
+EXE normally; it does not request administrator privileges. Tabs start disabled
+unless you previously enabled them. Look for the Quickky icon in the notification
+area, including its overflow panel if Windows hides the icon.
+
+### Notification-area menu
+
+Right-click the notification-area icon:
+
+- **Start with Windows** — enable or disable startup for your Windows account.
+- **Enable tabs** — collect eligible windows, or stop collecting when unchecked.
+- **About** — see the author, version, build time, and GitHub link.
+- **Exit** — remove Quickky integration and close the tray application.
+
+The checkmarks reflect startup registration and whether tabs are currently
+enabled. Startup applies to your account only. Quickky does not install a system
+service or change Explorer's global settings.
+
+### Try it in isolation
+
+For an isolated trial, create a dedicated folder and launch
+`QTabs.exe --capture-test-root "C:\QuickkyTabs"`. Only folder
+windows inside that directory are collected; this mode does not save the tabs
+setting. Open folders beneath that directory, select tabs to switch, and use
+**+** to open another view of the active folder. Disable tabs or exit to return
+to ordinary Explorer behavior. On Windows 11, already merged tabs stay together;
+they are not split into separate windows. Do not use the preview to manage important or
+unrelated windows.
+
+## Compatibility and limitations
+
+| Area | Current preview |
+| --- | --- |
+| Architecture | x86_64 |
+| Windows 11 | Native merge, current-folder + / Ctrl+T and exit tested on build 26300 |
+| Windows 10 | Capture, current-folder +, maximize/restore and recovery tested on build 19045 |
+| Existing native-tab groups | Eligible sources merge one tab at a time; unrelated tabs are not closed |
+| Native workspace capacity | Up to 128 tabs; additional windows stay separate |
+| Windows 10 workspace capacity | Up to 32 tabs; additional windows stay separate |
+| Native transfer state | Follows native drop behavior; selection/history may reset |
+| Accessibility, themes, multi-monitor and modal-window behavior | Not fully verified |
+
+Windows 10/11 on x86_64 are the project targets. Quickky does not collect the
+desktop, taskbar, Open/Save dialogs, or windows on other virtual desktops.
+Native collection currently requires the tested Explorer component version
+`10.0.26100.9949`; Windows updates may leave windows unmanaged until compatibility
+is verified. Unsupported classic caption layouts stay separate rather than cover
+Explorer's file area. Uncertain merges are not automatically retried. A timeout is
+not a rollback: an already-started native operation may still complete.
+Administrator privileges are not required.
+
+## Feedback
+
+Found a problem or have an idea? [Open an issue](https://github.com/achaosxyz/quickky-explorer-tabs/issues).
+Include the version and build time from **About**, your Windows version, steps to
+reproduce, and what you expected to happen. Redact personal file names and paths
+before sharing screenshots or diagnostic information.
+
+Feature ideas, bug reports, and translation corrections are welcome. Please
+discuss changes that affect Explorer behavior before sending a large change.
+
+## Author
+
+**aCHAOS** · [GitHub](https://github.com/achaosxyz) · [achaosxyz@gmail.com](mailto:achaosxyz@gmail.com)
 
 ## License
 
-[MIT](LICENSE).
+Project source: [MIT](LICENSE). Bundled Microsoft Visual C++ runtime binaries
+retain their original licensing terms.

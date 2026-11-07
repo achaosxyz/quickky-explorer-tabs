@@ -2,12 +2,27 @@
 
 ## Status and authority
 
-This repository contains a background C++17 Win32 controller, read-only Explorer
-discovery, a pure capture lifecycle and tab model, CMake/CTest targets, design
-contracts, and initial language catalogs. The controller has no independent
-visible window. It observes candidates but never requests attachment or changes
-Explorer windows. Actual tab presentation, native-tab replacement, the current-
-folder `+` action, recovery, and management settings remain unimplemented.
+The repository contains a C++17 tray application, read-only Explorer discovery,
+capture/group models, a target-thread bridge, Windows 11 native tab actions,
+an experimental Windows 10 custom strip, per-user settings, and CMake/CTest
+checks. Explicit enablement selects the platform backend. There is no independent
+browsing window.
+
+The accepted platform split is Windows 10 custom tabs and Windows 11 native
+tabs/transfer. The existing custom-tab bridge is not evidence of native transfer;
+its Windows 11 clipping and creation-guard path is not the accepted backend.
+Native merge follows Explorer's tab-drop semantics, not an assertion that a
+browser object moves intact. A scoped cross-process native drag on the tested
+host merged the tab but lost selection and navigation history. Those limitations
+must remain explicit; native appearance is not evidence of state preservation.
+
+This is an early preview, not complete native-tab replacement or general
+Windows 10/11 compatibility. Windows 11 supports the single matched ABI profile
+in [Explorer adapters](EXPLORER.md); unknown images remain ordinary windows.
+Windows 10 build 19045 has scoped live acceptance for custom capture, current-folder
+creation, maximized switching, minimize/restore, tray actions, and recovery.
+Other layouts/builds remain unverified.
+The remaining release gates below are not satisfied by rendering over a row.
 
 `docs/design/` is the single source of truth for project structure and design.
 This document owns the overall architecture; the linked module documents own
@@ -25,16 +40,25 @@ under the MIT license in the root `LICENSE` file.
 The accepted requirements are:
 
 - Support Windows 10 and Windows 11 on x86_64.
-- Use Quickky-owned tabs on both systems, with a Windows 11-inspired appearance.
-- Replace Windows 11's native tab behavior rather than use native tabs as the
-  backend or merely cover their pixels. Native tabs must not remain independently
-  usable inside a managed window.
+- On Windows 10, use Quickky-owned rectangular tabs and manage the visibility of
+  their Explorer folder windows.
+- On Windows 11, retain Explorer's native tab bar and native tab lifecycle. Collect
+  newly opened windows into the main Explorer frame through native tab transfer;
+  do not draw an additional strip, clip the native host, or block native tab use.
+- Use the verified native drop primitives and acknowledge destination creation
+  before removing the source native tab. Do not claim complete state preservation
+  or substitute an unacknowledged path launch followed by closing a whole frame.
+  Unsupported operations leave source windows usable. Unconfirmed mutations
+  quarantine the source identity: an in-flight native call may finish after
+  timeout, so failure is not proof of rollback or source preservation.
 - Automatically collect newly opened Explorer folder windows into the workspace.
 - Run the controller in the background, with tabs attached to real Explorer
   windows; do not provide an independent Quickky file-manager window.
-- The tab-strip `+` action opens a new Explorer folder window at the active
-  Quickky tab's current location and admits that window through normal capture.
-  Resolve the location at click time, not from the tab's original launch path.
+- On Windows 10, `+` opens a new Explorer folder window at the active Quickky
+  tab's current location and admits that window through normal capture. On
+  Windows 11, `+` creates a native tab at the active native tab's current location.
+  Snapshot the absolute PIDL on the source UI thread at click time, not from the
+  original launch path or the source's later location when a queued action runs.
 - Provide an English and Simplified Chinese management interface.
 
 Window uniqueness means one visible managed Explorer workspace in the active
@@ -48,6 +72,107 @@ boundary. Exact supported OS builds are not yet verified.
 
 ## Technology baseline
 
+### Tray-controlled integration
+
+The application owns a notification-area icon using the repository's `logo.ico`,
+not an independent visible window. Its localized context menu contains exactly
+Start at sign-in, Enable tabs, About, and Exit. Normal launch starts with tabs disabled
+unless the user previously enabled them. Enabling tabs composes the integration
+controller; disabling tabs or exiting restores managed windows first. The
+explicit test-root mode always restricts capture to its root and never changes
+the persisted enable-tabs preference. Automated live tests must still use this
+scoped mode; a tray action is not authorization to test on unrelated windows.
+
+Preferences use the current user's `Software\Quickky\ExplorerTabs` registry key.
+Startup uses only the application's value in the current-user `Run` key. Menu
+text comes from the aligned language catalogs, embedded at build time; locale
+resolution uses an explicit preference when present, then Windows UI language,
+then English. The application manifest requests `asInvoker`, not automatic UAC:
+the controller and Explorer must have matching integrity levels.
+
+The root `VERSION` text file is the single version source. CMake
+reads it during configuration and regenerates native build metadata on each
+build through `cmake/build_metadata.cmake`. The executable icon/version resource
+and About dialog use this metadata. About displays author aCHAOS, contact
+`achaosxyz@gmail.com`, the project GitHub link, version, and UTC build time.
+
+### Build, package, and release contract
+
+Development uses `develop`; `main` records released source. The CMake application
+target remains `QuickkyExplorerTabs`, with output filename `QTabs.exe`. Its hook
+DLL stays `QuickkyExplorerHook.dll`. PowerShell scripts in `scripts/` configure an
+x64 Release build, run the discovery-free `app.smoke` check, and package the EXE,
+DLL, version, license, and user documentation as `QTabs_vMAJOR.MINOR.PATCH.zip`.
+The ZIP includes the active MSVC toolchain's redistributable runtime DLLs beside
+the application. CMake records their source paths for packaging and their names
+for the hook staging code. The hook library stages those app-local DLLs with its
+per-run image, because Explorer has a different DLL-search context. Build-tree
+runs may use the installed runtime. No runtime installer or system-level setup
+is part of extraction or startup.
+
+Release preview is read-only with respect to GitHub and Git refs: it generates
+English commit-based release notes and a plan pinned to the selected commit.
+The manually dispatched release workflow accepts only `develop`, builds and
+smoke-tests that exact commit on a Windows runner, then publishes the ZIP to a
+GitHub Release tagged `vMAJOR.MINOR.PATCH`. Preview and publication are separate
+modes; preview does not create a GitHub prerelease.
+
+Only after successful publication does automation atomically fast-forward
+`main` to the tested commit and advance `develop` with a version-only commit.
+The next version increments SemVer MINOR and resets PATCH: `0.0.1` becomes
+`0.1.0`. Both branch updates must succeed together, without force pushes. A
+diverged `main`, concurrent `develop` change, or repository protection failure
+stops finalization; existing published assets are not overwritten. The release
+SOP documents inspection and recovery of partial publication. These checks do
+not establish Explorer compatibility or satisfy native-integration gates.
+
+### Scoped integration experiment
+
+An explicit `--capture-test-root PATH` mode may attach only Explorer windows
+whose folder locations are all inside the selected test directory. The Windows
+10 custom backend additionally requires a single view.
+Normal launch remains read-only until tabs are explicitly enabled; observation
+and smoke modes are always read-only. This experiment does not
+relax the general native-tab replacement release gate or authorize modifying
+pre-existing windows outside the selected test scope.
+
+The controller composes `WorkspaceController`, `HookClient`, and the Explorer
+adapters. Windows 11 retains a main native frame, snapshots source GUID/PIDL,
+uses the matched native drop-add action, confirms destination GUID/PIDL, then
+removes only the unchanged source GUID and verifies its absence. Multiple source
+tabs are transferred over successive reconciliations. Uncertain mutation results
+quarantine the source identity rather than retry an add that may have succeeded.
+Disable/exit removes integration but does not split native groups.
+
+The Windows 10 custom experiment composes `TabStrip`, shows an active Explorer
+root at shared placement, and hides inactive roots with local lease recovery.
+Its `+` snapshots the click-time PIDL and requests `opennewwindow` for capture.
+It is limited to 32 tabs and one attachment per UI thread. The existing clipping
+fixture is diagnostic, not evidence of a usable Windows 10 layout.
+The classic presenter uses a non-activating, Explorer-owned caption tool window,
+bounded by DWM's caption-button rectangle. It never resizes Explorer content or
+clips a XAML host. It is a tab surface, not a separate browsing window. Root
+movement, visibility, DPI, and destruction control its lifetime. Unsupported
+caption geometry rejects admission. The child/clipping fixture has a separate
+diagnostic protocol mode, never selected by the resident controller.
+Classic admission accepts the observed Windows 10 Ribbon layout only when its
+top dock stays below the caption and native caption hit tests identify a clear
+contiguous span. Quick Access controls, resize borders, and system buttons remain
+outside that span. DPI-aware frame metrics keep maximized captions on screen;
+minimize hides the surface and restore recomputes its bounds. Unknown layouts
+remain ordinary windows. Hidden/disabled owners hide the surface; reflow
+preserves its owner's z-order band. Classic window notifications coalesce a
+posted UI-thread reflow so Explorer's outer placement stack finishes before
+native hit testing; the surface hides while that work is pending. Explicit
+presentation reflows after `SetWindowPlacement` returns. Synthetic checks do not establish
+Windows 10 Explorer compatibility.
+The native bridge bounds snapshots and destination capacity to 128 tabs and
+admits at most 32 frame attachments at once. Other ABI profiles, other Windows 10
+layouts, accessibility, and general DPI/theme compatibility remain unverified.
+Root and strip callbacks hold the attachment alive across reentrant Win32 calls.
+Detach stops interception/restores the root immediately, but object destruction
+waits until outstanding callback/method scopes have unwound.
+
 - C++17, Win32, and a single-threaded COM apartment for the controller and probes.
 - Direct2D and DirectWrite for the Quickky tab strip.
 - CMake 3.21 or newer and MSVC with C++17 support for Windows x86_64 builds.
@@ -55,10 +180,15 @@ boundary. Exact supported OS builds are not yet verified.
 - An application process and an Explorer-only integration DLL.
 - UTF-8 JSON catalogs for management-interface localization.
 
-No third-party dependencies, package manager, UI framework, installer, or native
-Explorer private API has been selected. CMake builds `QuickkyExplorerTabs.exe`,
-the `quickky_core` and `quickky_capture` static libraries, and model/discovery
-test executables when testing is enabled. No integration DLL target exists yet.
+No third-party dependencies, package manager, UI framework, or installer has been
+selected. The Windows 11 adapter uses Explorer's private tab-actions interface;
+the initial ABI profile is restricted to the inspected ExplorerFrame image's
+CodeView GUID/age. Unknown profiles reject mutation rather than guess offsets.
+CMake builds `QTabs.exe`,
+`QuickkyExplorerHook.dll`, module static libraries, and synthetic/model test
+executables when testing is enabled. Windows 11 retains the original tab host and
+uses native add/remove actions, with current-folder `+` adapted on the managed
+frame. No region clipping or second strip belongs to that backend.
 
 ## Module boundaries
 
@@ -68,16 +198,17 @@ test executables when testing is enabled. No integration DLL target exists yet.
 | `src/capture/` | Folder-window discovery, identity checks, and capture coordination. | [Capture](CAPTURE.md) |
 | `src/group/` | Quickky tab ownership, active-window selection, and group state. | [Group](GROUP.md) |
 | `src/hook/` | Target-thread bootstrap, message bridging, recovery, and the DLL-side IPC endpoint. | [Hook](HOOK.md) |
-| `src/explorer/` | Build-specific Explorer integration and native-tab suppression. | [Explorer](EXPLORER.md) |
-| `src/chrome/` | Quickky tab rendering, hit testing, and presentation input. | [Chrome](CHROME.md) |
+| `src/explorer/` | Native Windows 11 frame actions, folder adaptation, and Windows 10 layout boundary. | [Explorer](EXPLORER.md) |
+| `src/chrome/` | Windows 10 Quickky rendering, hit testing, and presentation input. | [Chrome](CHROME.md) |
 | `src/settings/` | Management-page settings and locale selection. | [Settings](SETTINGS.md) |
 | `src/common/` | Shared identifiers and narrowly scoped cross-process contracts. | [Common](COMMON.md) |
 
-`app`, `capture`, `group`, and `common` contain code; `hook`, `explorer`, `chrome`,
-and `settings` remain reserved. The accepted composition assigns capture, group,
-and settings to the application and Explorer
-adapters and chrome to the DLL. Shared definitions belong in `common`; product
-policy does not. IPC transports and integration interfaces remain unspecified.
+All modules contain code. Capture, group, preferences, and `HookClient` run in
+the application; the native-tab guard and chrome run in the target Explorer UI
+thread. The application owns one staged hook library for its lifetime, including
+tabs enable/disable cycles. Failed DLL staging/loading cleans up before retry.
+Shared bounded wire values belong in `common`;
+product policy does not. A separate management page is not implemented.
 
 ## Repository layout
 
@@ -87,17 +218,29 @@ README.md
 README.zh-CN.md
 LICENSE
 CMakeLists.txt
-src/app/main.cpp
+VERSION
+cmake/build_metadata.cmake
+scripts/{common,build,preview-release,publish-release,test-release}.ps1
+.github/workflows/{windows-smoke,release}.yml
+logo.ico
+src/app/{main,tray_icon}.cpp
 src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cpp}
-src/group/group_model.{h,cpp}
-src/common/window_identity.h
-src/{app,capture,group,hook,explorer,chrome,settings,common}/
+src/group/{group_model,workspace_controller}.{h,cpp}
+src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
+src/explorer/{native_tab_guard,folder_location,native_frame}.{h,cpp}
+src/chrome/tab_strip.{h,cpp}
+src/settings/preferences.{h,cpp}
+src/common/{window_identity,hook_protocol}.h
+resources/{app.manifest,app.rc.in,resource.h,runtime_files.h.in,logo.png,tab-preview.png}
 resources/locales/{en-US,zh-CN}.json
-tests/{core_tests,discovery_tests}.cpp
+resources/locales/tray_strings.h.in
+tests/{core_tests,discovery_tests,native_guard_tests,workspace_bridge_tests}.cpp
+tests/native_guard_probe.cpp
+tests/native_transfer_probe.cpp
 tests/README.md
 docs/design/PROJECT_DESIGN.md
 docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,CHROME,SETTINGS,COMMON}.md
-docs/guides/{DEVELOPMENT,VALIDATION,EXPLORER_TESTING}.md
+docs/guides/{DEVELOPMENT,VALIDATION,EXPLORER_TESTING,RELEASE}.md
 ```
 
 The root also contains `.editorconfig` and `.gitignore`. `resources/` contains
@@ -117,9 +260,8 @@ The concrete core contracts are:
   records. Successful attachment acknowledgment is the only admission path;
   each attachment attempt has a unique token to reject late acknowledgments.
 
-No wire format, process injection, or native-window visibility policy is
-implemented. These model types do not constitute successful Explorer capture.
-The remaining conceptual entities are:
+The pure model types do not themselves perform Explorer capture. The integration
+adds these concrete contracts:
 
 - **Explorer window identity:** HWND, owning process/thread, and an attachment
   generation sufficient to distinguish a destroyed window from a reused handle.
@@ -127,9 +269,17 @@ The remaining conceptual entities are:
   Explorer folder window. A native Explorer tab is not a Quickky tab.
 - **Group:** ordered Quickky tabs, an active tab, and the common window placement.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window.
-- **Settings:** management-interface locale (`en-US` or `zh-CN`). Initial catalogs
-  exist, but runtime selection and persistence do not.
+  Quickky changes without closing the user's Explorer window. A version-5 bounded
+  `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
+  a per-window lifetime property and cancellation event protect local recovery.
+  New input appends a bounded, validated PIDL snapshot; no native pointers cross
+  the bridge. Native commands use a nonce-named bounded mapping and completion
+  event, correlated by request number. Copy-data only queues work; posted UI
+  dispatch executes COM-capable native actions and signals the published reply.
+  Timeout cancels the lease rather than reusing potentially in-flight storage.
+- **Settings:** per-user tabs/startup preferences and management-interface locale
+  (`en-US` or `zh-CN`). Runtime locale resolution reads the language preference
+  or Windows UI language; no language-picker page is implemented.
 
 Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their
@@ -153,9 +303,10 @@ that no lifecycle event can ever be missed.
 The controller remains message-only. `--snapshot` writes a read-only JSON
 snapshot to redirected standard output; `--observe-ms N` runs a bounded observer;
 `--stop` signals the current session's controller. Snapshot and bounded-observer
-modes do not replace or stop the resident controller. No normal code path begins
-attachment until an Explorer adapter can confirm native-tab replacement and
-recovery. Consequently no window is hidden, regrouped, closed, or injected into.
+modes do not replace or stop the resident controller. Only explicit tabs
+enablement or the directory-scoped integration mode invokes attachment. Hidden
+managed members are revalidated separately; discovery removal alone must not
+forget them or discard their leases.
 
 ## Key flows
 
@@ -164,8 +315,10 @@ The implemented executable flow is:
 1. Validate arguments. Normal launch acquires the session-local controller
    singleton and stop event, using the current user's default object ACLs.
 2. Initialize COM and create a message-only window, never a file-manager window.
-3. Start read-only discovery. Added candidates enter discovered state; removed
-   candidates invalidate that identity. No attachment request is issued.
+3. Start discovery and, in resident modes, the localized notification icon.
+   Added candidates enter discovered state; unmanaged removals invalidate that
+   identity. Previously enabled preferences or the explicit test root activate
+   the selected platform workspace, subject to identity, scope, and capability checks.
 4. Reconcile on events and a one-second timer. `--stop` signals the resident;
    `--observe-ms N` closes its own bounded observer after 1..600000 milliseconds.
 5. `--snapshot` emits candidate identifiers, generation, and the managed count to
@@ -178,20 +331,32 @@ duplicate launch exits without stopping the original controller. Snapshot and
 bounded modes do not acquire or signal the resident singleton. Object-name
 collisions or inaccessible objects fail rather than changing permissions.
 
-The unimplemented Explorer behavior contracts are:
+The attachment flow is:
 
 1. Discover an eligible Explorer folder window and validate its identity.
-2. Request attachment on its UI thread; verify the Explorer adapter can safely
-   replace native-tab behavior before admitting the window to the group.
+2. Choose the platform backend. Windows 10 prepares the nonce-bound custom-tab
+   attachment and revalidates before committing presentation. Windows 11 binds
+   a native-only bridge, validates the ABI capability and folder boundary, and
+   retains native presentation. Neither path admits a destroyed or reused HWND.
 3. Commit the Quickky tab only after attachment succeeds; keep or restore the
    ordinary Explorer window if attachment fails.
-4. Route Quickky tab actions through group policy and the target-window bridge.
+4. Route Windows 10 Quickky actions through group policy and the target bridge.
+   Windows 11 reads the active native tab, creates it through the destination's
+   tab-drop action, confirms the destination GUID/PIDL, and removes only that
+   source tab after source revalidation, verifying its absence. Native merges are
+   not split back into separate windows
+   on disable/exit: the OS owns the resulting tabs.
+   Close is an authenticated target-thread command, never an unqualified
+   `WM_CLOSE` posted to a cached HWND. Retire a closed or failed target before
+   publishing the remaining group.
 5. On detach, application loss, or unsupported integration, restore affected
    windows and remove Quickky behavior without terminating Explorer.
 
-The candidate grouping mechanism retains each Explorer top-level window and
+The Windows 10 grouping mechanism retains each Explorer top-level window and
 shows the active member at the group placement while hiding inactive members.
-This mechanism is unverified. Cross-process `SetParent` is not the baseline.
+Basic capture, switching, current-folder opening, maximize/minimize/restore, and
+recovery have scoped Windows 10 build 19045 evidence. Cross-process `SetParent`
+is not the baseline.
 Reliable automatic collection is required; universally flash-free creation is
 not claimed. Path-only reopening must not discard file selection or view state.
 
@@ -199,28 +364,41 @@ not claimed. Path-only reopening must not discard file selection or view state.
 
 Windows 10 and Windows 11 adapters isolate Explorer differences. Version names
 alone are not capability checks. Unknown or failed integrations leave Explorer
-unmanaged, usable, and visible. No native-tab disabling mechanism is established.
+unmanaged, usable, and visible. A private ABI profile is a compatibility boundary,
+not proof of support for other Explorer images.
+
+`QuickkyNativeGuardProbe` and `QuickkyExplorerHook.dll` provide an explicit,
+manual single-window mechanism test. The application uses its own staged hook
+client, not the probe executable, for explicit automatic admission. See
+[Hook](HOOK.md) and [Explorer](EXPLORER.md).
+The user authorized local testing. Test-created folder windows/processes are
+in scope; pre-existing folder windows/tabs are preserved. The observed host is
+Windows build 26300 with Explorer file version 10.0.26100.1710; this observation
+does not establish OS-build support.
 
 Before a usable integration can be claimed, evidence must establish:
 
 - Safe UI-thread attachment and detachment on explicitly recorded OS builds.
-- Complete native-tab replacement, including non-keyboard entry points and
-  windows that already contain native tabs; visual masking alone does not pass.
+- Native Windows 11 merging without a second strip or disabled native controls,
+  and Windows 10 custom-tab layout without covering Explorer content.
 - Correct tab switching, focus, taskbar/Alt+Tab behavior, placement, modal windows,
   drag-and-drop, and multi-monitor DPI handling.
-- Collection of supported launch sources without losing navigation or selection.
+- Collection of supported launch sources without unrelated tab loss, with the
+  native-drop navigation-history and selection limitations stated explicitly.
 - Restoration of hidden windows when the controller disconnects or exits.
 
-These gates are unverified design constraints, not a release roadmap or a record
-of successful tests. If a gate requires a new private mechanism or a change of
+These gates are not fully verified; fixture tests and scoped host evidence
+establish only the paths they exercise. If a gate requires a new private mechanism or a change of
 architecture, document the evidence and obtain agreement on the changed boundary
-before implementing it. Do not silently substitute the native-tab backend.
+before implementing it. Do not claim intact browser-state migration from a
+successful native merge.
 
 ## Documentation and procedures
 
 - [Development workflow](../guides/DEVELOPMENT.md)
 - [Validation and review](../guides/VALIDATION.md)
 - [Explorer integration testing](../guides/EXPLORER_TESTING.md)
+- [Release preview and publication](../guides/RELEASE.md)
 
 All development material, design documents, comments, and commit messages use
 English. `README.zh-CN.md` is the Chinese user-documentation exception. Chinese

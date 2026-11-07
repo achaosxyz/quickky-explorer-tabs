@@ -2,11 +2,11 @@
 
 ## Current scope
 
-The repository builds a background C++17 Windows x86_64 controller, core/capture
-libraries, model tests, synthetic Win32 discovery tests, and a message-only
-window smoke test. The controller observes eligible Explorer windows read-only;
-it does not attach, display tabs, or modify Explorer. Read-only host observations
-are not evidence of safe injection, native-tab replacement, or recovery.
+The repository builds a C++17 Windows x86_64 tray controller, integration DLL,
+module libraries, model tests, synthetic Win32 tests, and a discovery-free smoke
+test. Explicit tabs enablement activates experimental capture and presentation;
+snapshot/observation remain read-only. Read-only host observations are not
+evidence of safe injection, native-tab replacement, or recovery.
 
 ## Procedure
 
@@ -41,7 +41,7 @@ are not evidence of safe injection, native-tab replacement, or recovery.
 The verified local tools are CMake 3.28.3, Visual Studio 2017 Build Tools 15.9,
 MSVC 19.16.27051 (v141), and Windows SDK 10.0.17763.0. No new tool installation
 is required on this workstation. A successful build is not evidence that the
-unimplemented Explorer integration works on any Windows version.
+experimental Explorer integration works on every Windows version.
 
 ## Configure, build, and test
 
@@ -61,30 +61,35 @@ This generator locates the installed Visual Studio tools without adding `cl.exe`
 or Microsoft's linker to the global PATH. The SDK version above describes the
 local environment, not a requirement to replace a different compatible SDK.
 
-Outputs are `build/vs2017-x64/Debug/QuickkyExplorerTabs.exe` and
-`build/vs2017-x64/Release/QuickkyExplorerTabs.exe`. `build/` is ignored by Git.
-No integration DLL or installer is built.
+Outputs are `build/vs2017-x64/Debug/QTabs.exe` and
+`build/vs2017-x64/Release/QTabs.exe`. `build/` is ignored by Git.
+`QuickkyExplorerHook.dll` is built beside each EXE and must remain beside it.
+No installer is built. Version resources/About read root `VERSION`; build time
+is regenerated in UTC on each build.
 
 ## Run the background controller
 
 ```powershell
-Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe
+Start-Process .\build\vs2017-x64\Debug\QTabs.exe
 ```
 
-Normal launch stays in the background with no independent file-manager window.
+Normal launch stays in the notification area with no independent file-manager
+window. Tabs are disabled unless previously enabled. Do not enable unscoped
+capture on the daily desktop as part of development tests; use
+`--capture-test-root` with dedicated folders under `build/live-test`.
 To stop it, run:
 
 ```powershell
-Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--stop' -Wait
+Start-Process .\build\vs2017-x64\Debug\QTabs.exe -ArgumentList '--stop' -Wait
 ```
 
 These diagnostics only read Explorer metadata and never hide windows, inject a
 DLL, or claim successful tab admission:
 
 ```powershell
-Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--snapshot' -Wait -RedirectStandardOutput .\build\snapshot.json
+Start-Process .\build\vs2017-x64\Debug\QTabs.exe -ArgumentList '--snapshot' -Wait -RedirectStandardOutput .\build\snapshot.json
 Get-Content .\build\snapshot.json
-Start-Process .\build\vs2017-x64\Debug\QuickkyExplorerTabs.exe -ArgumentList '--observe-ms 1000' -Wait
+Start-Process .\build\vs2017-x64\Debug\QTabs.exe -ArgumentList '--observe-ms 1000' -Wait
 ```
 
 Snapshots contain identifiers, generations, and the managed count, not titles or
@@ -92,11 +97,20 @@ folder paths. Missing identity/desktop queries fail closed. Do not elevate the
 controller: a different integrity level excludes ordinary Explorer candidates.
 UAC is not needed for these operations.
 
-CTest runs `core.model`, `capture.discovery`, and `app.smoke`. Discovery tests use
-hidden, test-owned windows and a test-local inspector, not real Explorer
-attachment. `app.smoke` skips discovery and closes its message-only window.
+CTest runs `core.model`, `capture.discovery`, `explorer.native_guard`,
+`workspace.bridge`, and `app.smoke`. Fixtures are hidden test-owned windows, not
+real Explorer attachment. Bridge tests load the DLL only into the test process.
+`app.smoke` skips discovery and closes its message-only window.
 Invalid arguments return 160 (`ERROR_BAD_ARGUMENTS`). Use `"-DBUILD_TESTING=OFF"`
 in a separate build directory only when intentionally omitting test executables.
 
 For Explorer integration, follow the
 [dedicated testing procedure](EXPLORER_TESTING.md) before any live attachment.
+
+## Distribution and release
+
+Use [Release preview and publication](RELEASE.md) for the two release SOPs and
+the `scripts/` build/package commands. Development uses `develop`; release
+automation advances `main` only to tested release source and then increments
+the development MINOR version. Do not push or publish as part of routine local
+validation without explicit authorization.

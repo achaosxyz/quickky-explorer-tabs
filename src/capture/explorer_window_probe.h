@@ -15,7 +15,7 @@ namespace quickky {
 class ExplorerWindowProbe {
 public:
     bool Initialize();
-    std::optional<WindowCandidate> Inspect(HWND window) const;
+    std::optional<WindowCandidate> Inspect(HWND window, bool include_hidden = false) const;
 
 private:
     Microsoft::WRL::ComPtr<IVirtualDesktopManager> desktops_;

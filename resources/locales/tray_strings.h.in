@@ -1,0 +1,22 @@
+#pragma once
+
+namespace quickky {
+struct TrayStrings {
+    const wchar_t* startup;
+    const wchar_t* enable_tabs;
+    const wchar_t* about;
+    const wchar_t* exit;
+    const wchar_t* about_title;
+    const wchar_t* author;
+    const wchar_t* version;
+    const wchar_t* build_time;
+};
+inline constexpr TrayStrings kEnglish{
+    L"@en_startup@", L"@en_enableTabs@", L"@en_about@", L"@en_exit@",
+    L"@en_title@", L"@en_author@", L"@en_version@", L"@en_buildTime@"
+};
+inline constexpr TrayStrings kChinese{
+    L"@zh_startup@", L"@zh_enableTabs@", L"@zh_about@", L"@zh_exit@",
+    L"@zh_title@", L"@zh_author@", L"@zh_version@", L"@zh_buildTime@"
+};
+} // namespace quickky

@@ -1,4 +1,16 @@
 {
+  "tray": {
+    "startup": "开机自启动",
+    "enableTabs": "启用 tabs",
+    "about": "关于",
+    "exit": "退出"
+  },
+  "about": {
+    "title": "关于 Quickky Explorer Tabs",
+    "author": "作者",
+    "version": "版本",
+    "buildTime": "构建时间"
+  },
   "settings": {
     "title": "设置",
     "language": {

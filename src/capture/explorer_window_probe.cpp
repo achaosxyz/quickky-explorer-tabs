@@ -74,9 +74,9 @@ bool ExplorerWindowProbe::Initialize()
     return true;
 }
 
-std::optional<WindowCandidate> ExplorerWindowProbe::Inspect(HWND window) const
+std::optional<WindowCandidate> ExplorerWindowProbe::Inspect(HWND window, bool include_hidden) const
 {
-    if (!ready_ || window == nullptr || !IsWindowVisible(window)
+    if (!ready_ || window == nullptr || (!include_hidden && !IsWindowVisible(window))
         || GetAncestor(window, GA_ROOT) != window || GetWindow(window, GW_OWNER) != nullptr) {
         return std::nullopt;
     }

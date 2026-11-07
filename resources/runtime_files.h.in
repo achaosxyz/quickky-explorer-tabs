@@ -1,0 +1,6 @@
+#pragma once
+
+namespace quickky {
+inline constexpr const wchar_t* kRuntimeFiles[] = {
+@QUICKKY_RUNTIME_NAMES@};
+} // namespace quickky

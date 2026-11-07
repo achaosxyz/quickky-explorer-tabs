@@ -3,8 +3,8 @@
 ## Status
 
 The module contains read-only Explorer discovery and a pure capture lifecycle
-coordinator. No process injection, native-tab replacement, or actual admission
-of Explorer windows is enabled by the application.
+coordinator. Explicitly enabled `WorkspaceController` instances request real
+attachment through the separate hook client; discovery itself has no mutations.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
@@ -38,6 +38,11 @@ Quickky group without losing the original window on failure.
   bypass option for Explorer ownership checks.
 
 ## Boundary
+
+The explicit scoped workspace composes discovery with acknowledged attachment.
+Removal from the visible discovery set is not a destruction acknowledgment:
+managed hidden identities are checked against their actual HWND/process lifetime
+before release. Normal discovery/observation remains read-only.
 
 Capture does not render tabs, terminate Explorer, or reopen only a folder path
 and assume selection/search state was preserved. Group membership is owned by

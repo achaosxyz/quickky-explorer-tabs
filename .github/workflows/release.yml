@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview notes or publish the tested ZIP
+        required: true
+        default: preview
+        type: choice
+        options: [preview, release]
+
+# Never cancel a publication halfway through its external side effects.
+concurrency:
+  group: qtabs-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Require develop
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/develop') {
+            throw 'Dispatch this workflow from develop.'
+          }
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release scripts
+        shell: pwsh
+        run: ./scripts/test-release.ps1
+      - name: Preview release notes
+        shell: pwsh
+        run: |
+          ./scripts/preview-release.ps1
+          Get-Content build/release/RELEASE_NOTES.md -Raw >> $env:GITHUB_STEP_SUMMARY
+      - name: Build, smoke-test, and package x64
+        shell: pwsh
+        run: ./scripts/build.ps1 -Generator 'Visual Studio 17 2022'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-candidate
+          path: |
+            build/release/QTabs_v*.zip
+            build/release/release-plan.json
+            build/release/RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: inputs.mode == 'release'
+    needs: prepare
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-candidate
+          path: build/release
+      - name: Publish and finalize branches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/publish-release.ps1 -SourceSha $env:GITHUB_SHA -Repository $env:GITHUB_REPOSITORY

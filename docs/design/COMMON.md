@@ -3,7 +3,8 @@
 ## Status
 
 `window_identity.h` defines `NativeWindow`, `TabId`, `WindowCandidate`, and
-`WindowIdentity` for the implemented discovery and models. No IPC protocol exists.
+`WindowIdentity` for discovery and models. `hook_protocol.h` defines the concrete
+versioned bridge used by the application, DLL, and guard-only probe.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
@@ -30,8 +31,25 @@ such as tab identity, attachment identity, and cross-process request/result data
 
 ## Boundary
 
-No wire format, container library, logging framework, generic error hierarchy,
-or IPC transport is defined. A shared directory does not justify new abstractions.
+`hook_protocol.h` defines the version-6 `WM_COPYDATA` header shared
+by controller, scoped workspace DLL, and manual guard probe. It carries target
+HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
+labels, and explicit presentation/input commands. Payloads are value-only.
+The nonce also derives a local cancellation-event name; no handles or C++ object
+pointers cross process boundaries. Ordinary commands are fixed-size. Only a New
+input appends an absolute PIDL snapshot (at most 64 KiB, including its terminator);
+the header size covers the whole packet. Validate every item boundary and clone
+the bytes before acknowledging, without COM calls inside the receiver callback.
+
+Windows 11 adds a separate bounded `NativeExchange` mapping and completion event,
+both derived from that nonce. It carries a monotonically correlated request,
+native GUIDs (at most 128), HRESULT, and a PIDL (at most 64 KiB). The copy-data
+message only queues work; posted UI dispatch publishes the response before
+signaling completion. Timeout cancels the lease and forbids storage reuse.
+Unsupported versions/counts are rejected.
+
+No container library, logging framework, or generic error hierarchy is selected.
+A shared directory does not justify unrelated abstractions.
 
 ## Acceptance evidence
 

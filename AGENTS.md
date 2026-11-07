@@ -4,12 +4,15 @@
 
 Quickky Explorer Tabs is a Windows File Explorer enhancement for users who want
 folder windows collected into a single tabbed workspace. Its accepted scope
-includes Quickky-owned tabs on Windows 10/11 and replacement of Windows 11 native
-tab behavior, with an English/Simplified Chinese management interface. This
-repository contains a background C++17 controller, read-only Explorer discovery,
-capture/group models, CMake/CTest checks, design documents, and language catalogs.
-Actual window attachment, tab UI, native-tab replacement, the current-folder `+`
-action, and management features are not implemented.
+uses Quickky-owned rectangular tabs on Windows 10 and preserves native Explorer
+tabs on Windows 11, collecting new windows through native tab-drop
+transfer without an additional strip, plus an English/Simplified Chinese
+management interface. This
+repository contains a C++17 tray controller, Explorer discovery, capture/group
+models, a target-thread hook bridge, experimental custom tabs and current-folder
+`+`, per-user preferences, CMake/CTest checks, and bilingual language catalogs.
+The integration is an early preview, not verified general Windows 10/11 support
+or complete native-tab replacement.
 
 ## Core logic
 
@@ -17,33 +20,48 @@ action, and management features are not implemented.
    independent Quickky browsing window. Normal duplicate launch exits harmlessly.
 2. Discover eligible Explorer windows by initial enumeration, WinEvent observation,
    and periodic reconciliation. Verify process, user, session, integrity, and
-   virtual-desktop identity; do not hide, close, or modify any candidate.
-3. Feed observed lifetimes into the capture model. Real admission is disabled;
-   only a matching successful attachment acknowledgment could create a tab.
+   virtual-desktop identity. Discovery itself never mutates candidates.
+3. Keep tabs disabled by default. Windows 10 custom groups require single-view
+   windows and restore hidden members on disable/exit/controller loss. Windows 11
+   uses an explicitly matched native ABI: confirm destination GUID/PIDL before
+   deleting the revalidated source GUID, never a whole source frame. Native
+   groups remain native on exit; uncertain transfers are quarantined without
+   automatic retry. Timeout cannot roll back an already-started native call.
 4. Support `--stop`, read-only `--snapshot`, bounded `--observe-ms N`, and a
-   discovery-free `--smoke-test`. Invalid arguments return status 160.
+   discovery-free `--smoke-test`, and directory-scoped `--capture-test-root PATH`.
+   Diagnostic and smoke modes do not attach or create a tray icon. Invalid
+   arguments return status 160.
 
 Do not present observation or model tests as working native-tab replacement,
 visible grouping, recovery, or locale selection. The `+` requirement is to open
-the active Explorer tab's current location and capture the resulting window.
+the active tab's current location. Windows 10 captures the new window; Windows 11
+creates a native tab without an additional strip. Do not promise intact history
+or selection: the observed native drop semantics do not preserve them.
 
 ## Modules
 
-`app`, `capture`, `group`, and `common` contain code; the other modules are reserved:
+All listed modules contain code; a separate management page is not implemented:
 
-- `src/app/`: Background controller, local lifetime controls, and diagnostics.
+- `src/app/`: Background controller, tray, About dialog, and diagnostics.
 - `src/capture/`: Explorer folder-window discovery and capture coordination.
 - `src/group/`: Quickky tab ownership and active-workspace state.
 - `src/hook/`: Target-thread bootstrap, message bridge, and local recovery.
-- `src/explorer/`: Explorer adaptation and native-tab replacement boundary.
+- `src/explorer/`: Folder snapshots, matched native tab actions, and diagnostic guard.
 - `src/chrome/`: Quickky tab presentation and input boundary.
 - `src/settings/`: Management preferences and localization boundary.
-- `src/common/`: Window/tab identity types; an IPC protocol is not implemented.
+- `src/common/`: Window/tab identities and a bounded, versioned hook protocol.
 
 ## Repository directories
 
 - `src/`: Native application source and reserved integration modules.
 - `resources/locales/`: Initial `en-US` and `zh-CN` management-interface catalogs.
+- `resources/`: Icon/version resources and the `asInvoker` application manifest.
+- `VERSION`: Single plain-text product version source.
+- `cmake/`: Per-build version and UTC timestamp generation.
+- `scripts/`: PowerShell build, ZIP packaging, release preview/publication, and
+  release-script checks.
+- `.github/workflows/`: Minimal Windows smoke checks and manually dispatched
+  preview/release automation from `develop`.
 - `tests/`: Pure model tests, synthetic Win32 discovery tests, and test boundaries.
 - `docs/design/`: Overall architecture and individual module contracts.
 - `docs/guides/`: Development and validation standard operating procedures.
@@ -103,7 +121,8 @@ the active Explorer tab's current location and capture the resulting window.
   manager. Do not run ordinary Explorer discovery elevated or request UAC without
   a concrete privileged operation. Read-only observation does not authorize
   injection or visibility changes on the development desktop.
-- Do not silently replace Quickky-owned tabs with a native Explorer tab backend.
+- Keep the platform split explicit: Windows 10 custom tabs, Windows 11 native
+  tabs. Do not substitute path reopening/closing for state-preserving transfer.
 - Perform validation proportional to risk. Report actual results and limitations;
   documentation checks do not prove native builds or Explorer compatibility.
 - Do not commit, push, publish, or deploy without explicit authorization.
@@ -129,7 +148,7 @@ the active Explorer tab's current location and capture the resulting window.
 - Undocumented module, structure, or core-flow changes.
 - Unconfirmed dependencies or future-proofing abstractions.
 - Treating an undefined or unverified design as an established fact.
-- Claiming native-tab replacement from visual masking alone.
+- Claiming native-tab migration from visual masking or path reopening alone.
 - Live Explorer integration tests on an unscoped daily desktop. The application's
   hidden-window smoke test does not attach to Explorer and is outside that scope.
 - Changing the MIT license without explicit maintainer authorization.
@@ -139,3 +158,4 @@ the active Explorer tab's current location and capture the resulting window.
 - [Development workflow](docs/guides/DEVELOPMENT.md)
 - [Validation and review](docs/guides/VALIDATION.md)
 - [Explorer integration testing](docs/guides/EXPLORER_TESTING.md)
+- [Release preview and publication](docs/guides/RELEASE.md)

@@ -1,4 +1,16 @@
 {
+  "tray": {
+    "startup": "Start at sign-in",
+    "enableTabs": "Enable tabs",
+    "about": "About",
+    "exit": "Exit"
+  },
+  "about": {
+    "title": "About Quickky Explorer Tabs",
+    "author": "Author",
+    "version": "Version",
+    "buildTime": "Build time"
+  },
   "settings": {
     "title": "Settings",
     "language": {

@@ -2,11 +2,22 @@
 
 ## Status
 
-`src/settings/` is reserved. Initial English and Simplified Chinese JSON catalogs
-exist under `resources/locales/`; there is no management page, locale loader, or
-settings persistence. See the [overall design](PROJECT_DESIGN.md).
+`preferences` implements per-user startup, the saved tabs setting, and locale
+resolution. English/Simplified Chinese catalogs supply the tray and About dialog
+through build-generated native strings. A separate management page and a runtime
+language picker are not implemented. See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
+
+`preferences` owns the per-user startup registration, persisted tabs-enabled
+choice, and locale selection. The tray uses four catalog keys under `tray`:
+`startup`, `enableTabs`, `about`, and `exit`; About field labels are under `about`.
+CMake embeds these UTF-8 catalog values into
+a generated native header; no JSON parser or third-party dependency is required.
+Startup changes touch only `QuickkyExplorerTabs` in the current user's `Run` key.
+Enabling/disabling startup takes effect only after a successful registry write;
+the menu reads actual registration rather than a cached checkbox. No management
+page or runtime language-selection UI is implied by localized tray text.
 
 Own management-interface preferences, locale resolution, and translated text
 lookup without coupling the page to Explorer internals.
@@ -36,9 +47,12 @@ definitions only, not evidence that the corresponding UI is implemented.
 
 ## Boundary
 
-No management-page framework, persistence location, translation library, or
-in-process locale switching mechanism is selected. Add concrete choices with
-the first implementation, not as scaffold dependencies.
+Preferences use `HKCU\Software\Quickky\ExplorerTabs`; startup uses the single
+`QuickkyExplorerTabs` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+The startup command is the quoted executable path, without scope-test arguments.
+No service, machine-wide registration, scheduler task, or administrator rights
+are needed. Scoped integration does not write the global tabs preference.
+The version comes from root `VERSION`; build metadata is generated separately.
 
 ## Acceptance evidence
 
