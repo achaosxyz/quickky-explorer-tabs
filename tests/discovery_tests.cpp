@@ -62,8 +62,10 @@ void Run()
             process, thread, process_started_at};
     };
     std::vector<quickky::WindowChange> changes;
+    bool retry_requested = false;
     quickky::ExplorerDiscovery discovery(inspect,
-        [&](const quickky::WindowChange& change) { changes.push_back(change); });
+        [&](const quickky::WindowChange& change) { changes.push_back(change); },
+        [&] { retry_requested = true; });
     Check(discovery.Start(), "start discovery");
     Check(discovery.windows().size() == 1 && changes.size() == 1, "initial enumeration");
     Check(changes[0].kind == quickky::WindowChangeKind::Added, "initial add event");
@@ -78,10 +80,31 @@ void Run()
     PumpUntil([&] { return discovery.windows().size() == 2 || discovery.failed(); });
     Check(!discovery.failed() && changes.size() == 2, "observe creation notification");
 
+    // Drain the create event while the inspector still rejects this identity.
+    // Becoming ready later emits no new lifecycle event; a deferred discovery
+    // pass must admit it without waiting for one-second periodic reconciliation.
+    retry_requested = false;
+    FixtureWindow delayed;
+    Check(delayed.value != nullptr, "create not-yet-ready fixture");
+    PumpUntil([&] { return retry_requested || discovery.failed(); });
+    const auto delayed_handle = reinterpret_cast<quickky::NativeWindow>(delayed.value);
+    Check(!discovery.failed() && discovery.windows().count(delayed_handle) == 0,
+        "Readiness hint is not admission");
+    accepted.insert(delayed.value);
+    const auto before_ready = changes.size();
+    Check(discovery.Refresh() && discovery.windows().count(delayed_handle) == 1 &&
+        changes.size() == before_ready + 1, "Deferred re-probe admits ready identity without another event");
+    accepted.erase(delayed.value);
+    delayed.Destroy();
+    PumpUntil([&] { return discovery.windows().size() == 2 || discovery.failed(); });
+    Check(!discovery.failed(), "Remove delayed fixture");
+    const auto before_first_remove = changes.size();
+
     accepted.erase(first.value);
     first.Destroy();
     PumpUntil([&] { return discovery.windows().size() == 1 || discovery.failed(); });
-    Check(!discovery.failed() && changes.back().kind == quickky::WindowChangeKind::Removed,
+    Check(!discovery.failed() && changes.size() == before_first_remove + 1 &&
+        changes.back().kind == quickky::WindowChangeKind::Removed,
         "observe destruction notification");
 
     const auto before_replacement = changes.size();
@@ -111,6 +134,15 @@ void Run()
     Check(!throwing_probe.Start() && throwing_probe.failed(), "contain enumeration exception");
     Check(discovery.Start(), "restart after failed observers");
     discovery.Stop();
+
+    quickky::ExplorerDiscovery throwing_retry(inspect, [](const quickky::WindowChange&) {},
+        [] { throw std::runtime_error("retry notification failure"); });
+    Check(throwing_retry.Start(), "start throwing retry fixture");
+    FixtureWindow rejected;
+    Check(rejected.value != nullptr, "create rejected retry fixture");
+    PumpUntil([&] { return throwing_retry.failed(); });
+    Check(IsWindow(rejected.value) != FALSE, "Retry notification never mutates rejected window");
+    throwing_retry.Stop();
 
     quickky::ExplorerWindowProbe production;
     Check(production.Initialize(), "initialize production probe");

@@ -5,9 +5,9 @@
 
 namespace quickky {
 namespace {
-constexpr wchar_t kPreferences[] = L"Software\\Quickky\\ExplorerTabs";
+constexpr wchar_t kPreferences[] = L"Software\\QTabs";
 constexpr wchar_t kRun[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kStartupValue[] = L"QuickkyExplorerTabs";
+constexpr wchar_t kStartupValue[] = L"QTabs";
 
 std::optional<std::wstring> ReadString(const wchar_t* key, const wchar_t* name)
 {

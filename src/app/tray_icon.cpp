@@ -37,7 +37,7 @@ bool TrayIcon::Create(HINSTANCE instance, HWND controller)
     WNDCLASSW definition{};
     definition.lpfnWndProc = Procedure;
     definition.hInstance = instance;
-    definition.lpszClassName = L"QuickkyExplorerTabs.Tray";
+    definition.lpszClassName = L"QTabs.Tray";
     if (!RegisterClassW(&definition) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
     // A hidden top-level broker receives TaskbarCreated broadcasts; message-only windows do not.
     window_ = CreateWindowExW(WS_EX_TOOLWINDOW, definition.lpszClassName, L"", WS_POPUP,
@@ -53,7 +53,7 @@ bool TrayIcon::Add()
     data_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     data_.uCallbackMessage = kCallback;
     data_.hIcon = icon_;
-    wcscpy_s(data_.szTip, L"Quickky Explorer Tabs");
+    wcscpy_s(data_.szTip, L"QTabs");
     if (!Shell_NotifyIconW(NIM_ADD, &data_)) return false;
     data_.uVersion = NOTIFYICON_VERSION_4;
     return Shell_NotifyIconW(NIM_SETVERSION, &data_) != FALSE;
@@ -103,13 +103,13 @@ void TrayIcon::ShowAbout()
     const auto& text = CurrentTrayStrings();
     const std::wstring content = std::wstring(text.author) + L": aCHAOS\nachaosxyz@gmail.com\n\n" +
         text.version + L": " + QUICKKY_VERSION + L"\n" + text.build_time + L": " +
-        QUICKKY_BUILD_TIME + L"\n\n<a href=\"" + kGithub + L"\">GitHub</a>";
+        QUICKKY_BUILD_TIME + L"\n\n<a href=\"" + kGithub + L"\">" + kGithub + L"</a>";
     TASKDIALOGCONFIG dialog{sizeof(dialog)};
     dialog.hwndParent = window_;
     dialog.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_USE_HICON_MAIN | TDF_ALLOW_DIALOG_CANCELLATION;
     dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     dialog.pszWindowTitle = text.about_title;
-    dialog.pszMainInstruction = L"Quickky Explorer Tabs";
+    dialog.pszMainInstruction = L"QTabs";
     dialog.pszContent = content.c_str();
     dialog.hMainIcon = icon_;
     dialog.pfCallback = AboutProcedure;

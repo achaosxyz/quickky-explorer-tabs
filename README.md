@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="resources/logo.png" width="96" height="96" alt="Quickky Explorer Tabs logo">
+  <img src="resources/logo.png" width="96" height="96" alt="QTabs logo">
 </p>
 
-<h1 align="center">Quickky Explorer Tabs</h1>
+<h1 align="center">QTabs</h1>
 
 <p align="center">Your Explorer. One workspace. Your own tabs.</p>
 
@@ -14,15 +14,9 @@
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>
 
-Quickky brings newly opened File Explorer folder windows together as tabs,
+QTabs brings newly opened File Explorer folder windows together as tabs,
 right inside Explorer. Keep the file manager you already know, without another
 browsing window or a second application to manage your files.
-
-> **This is an experimental preview, not ready for daily use.** Basic grouping
-> has been tested on Windows 10 build 19045 and one Windows 11 configuration.
-> General Windows compatibility is not yet verified.
-> Unsupported configurations are left unmanaged; important windows should not be
-> used for testing.
 
 ## Features
 
@@ -32,8 +26,9 @@ browsing window or a second application to manage your files.
 - Control Panel, Printers, and connection-management pages stay outside the workspace.
 - Switch folders by selecting a tab; close a tab with its close button.
 - Open another tab at the active folder's **current** location with **+**.
-- Windows 11 groups stay in Explorer when Quickky is disabled or exits.
+- Windows 11 groups stay in Explorer when QTabs is disabled or exits.
 - Run in the notification area, with no independent browsing window.
+- Single-instance background controller; repeated launches exit quietly.
 - English and Simplified Chinese tray menus, following the Windows UI language.
 
 ## Getting started
@@ -42,7 +37,7 @@ Extract all files from `QTabs_vX.X.X.zip`. The required Visual C++ runtime DLLs
 are included; no separate runtime installation is needed. Keep all extracted
 DLLs beside `QTabs.exe`. Launch the
 EXE normally; it does not request administrator privileges. Tabs start disabled
-unless you previously enabled them. Look for the Quickky icon in the notification
+unless you previously enabled them. Look for the QTabs icon in the notification
 area, including its overflow panel if Windows hides the icon.
 
 ### Notification-area menu
@@ -50,12 +45,12 @@ area, including its overflow panel if Windows hides the icon.
 Right-click the notification-area icon:
 
 - **Start with Windows** — enable or disable startup for your Windows account.
-- **Enable tabs** — collect eligible windows, or stop collecting when unchecked.
-- **About** — see the author, version, build time, and GitHub link.
-- **Exit** — remove Quickky integration and close the tray application.
+- **Enable Tabs** — collect eligible windows, or stop collecting when unchecked.
+- **About** — see the author, version, build time, and clickable full GitHub URL.
+- **Exit** — remove QTabs integration and close the tray application.
 
 The checkmarks reflect startup registration and whether tabs are currently
-enabled. Startup applies to your account only. Quickky does not install a system
+enabled. Startup applies to your account only. QTabs does not install a system
 service or change Explorer's global settings.
 
 ### Try it in isolation
@@ -82,7 +77,7 @@ unrelated windows.
 | Native transfer state | Follows native drop behavior; selection/history may reset |
 | Accessibility, themes, multi-monitor and modal-window behavior | Not fully verified |
 
-Windows 10/11 on x86_64 are the project targets. Quickky does not collect the
+Windows 10/11 on x86_64 are the project targets. QTabs does not collect the
 desktop, taskbar, Open/Save dialogs, or windows on other virtual desktops.
 Native collection currently requires the tested Explorer component version
 `10.0.26100.9949`; Windows updates may leave windows unmanaged until compatibility

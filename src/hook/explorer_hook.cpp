@@ -14,7 +14,7 @@ namespace {
 
 constexpr UINT_PTR kSubclass = 0x514b4750;
 constexpr GUID kEmptyNonce{};
-constexpr wchar_t kBindingProperty[] = L"QuickkyExplorerTabs.Attachment";
+constexpr wchar_t kBindingProperty[] = L"QTabs.Attachment";
 using ProcessHandle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 // One attachment per Explorer UI thread. The window property binds its HWND
@@ -435,7 +435,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
     }
     if (request.workspace > 3) return false;
     if (request.workspace == 2) {
-        if (!native_message) native_message = RegisterWindowMessageW(L"QuickkyExplorerTabs.Native.v6");
+        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v6");
         if (!native_message) return false;
         next->completed.reset(OpenEventW(EVENT_MODIFY_STATE, FALSE,
             (quickky::NativeMappingName(request.nonce) + L".Ready").c_str()));
@@ -448,7 +448,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
         if (!next->exchange) return false;
     } else if (quickky::NativeTabGuard::CountTabs(target) != 1) return false;
     if (request.workspace == 1 && !layout_message) {
-        layout_message = RegisterWindowMessageW(L"QuickkyExplorerTabs.Layout.v6");
+        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v6");
         if (!layout_message) return false;
     }
     if (GetPropW(target, kBindingProperty) || !SetPropW(target, kBindingProperty, next.get())) return false;

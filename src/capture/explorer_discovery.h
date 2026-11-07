@@ -21,8 +21,9 @@ class ExplorerDiscovery {
 public:
     using Inspector = std::function<std::optional<WindowCandidate>(HWND)>;
     using Handler = std::function<void(const WindowChange&)>;
+    using RetryHandler = std::function<void()>;
 
-    ExplorerDiscovery(Inspector inspector, Handler handler);
+    ExplorerDiscovery(Inspector inspector, Handler handler, RetryHandler retry = {});
     ~ExplorerDiscovery();
     ExplorerDiscovery(const ExplorerDiscovery&) = delete;
     ExplorerDiscovery& operator=(const ExplorerDiscovery&) = delete;
@@ -39,10 +40,12 @@ private:
     static void CALLBACK WinEvent(HWINEVENTHOOK, DWORD event, HWND window,
         LONG object, LONG child, DWORD, DWORD) noexcept;
     void OnEvent(DWORD event, HWND window, LONG object, LONG child);
+    void RequestRetry(HWND window);
 
     static thread_local ExplorerDiscovery* current_;
     Inspector inspector_;
     Handler handler_;
+    RetryHandler retry_;
     std::map<NativeWindow, WindowCandidate> windows_;
     HWINEVENTHOOK lifecycle_ = nullptr;
     HWINEVENTHOOK foreground_ = nullptr;

@@ -39,7 +39,7 @@ bool HookLibrary::Load()
     const std::wstring source_directory = std::wstring(executable).substr(0,
         std::wstring(executable).find_last_of(L"\\/") + 1);
     const std::wstring source = source_directory + L"QuickkyExplorerHook.dll";
-    directory_ = std::wstring(temporary) + L"QuickkyExplorerTabs-" + text;
+    directory_ = std::wstring(temporary) + L"QTabs-" + text;
     if (!CreateDirectoryW(directory_.c_str(), nullptr)) { directory_.clear(); return false; }
     filename_ = directory_ + L"\\QuickkyExplorerHook.dll";
     for (const auto name : kRuntimeFiles) {

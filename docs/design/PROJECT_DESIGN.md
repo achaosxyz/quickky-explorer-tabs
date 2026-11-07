@@ -32,7 +32,7 @@ for this design. Direct user and host instructions take precedence.
 
 ## Product scope
 
-Quickky Explorer Tabs is a Windows File Explorer enhancement for people who
+QTabs is a Windows File Explorer enhancement for people who
 want folder windows collected into a single tabbed workspace while retaining
 the real Explorer browsing experience. The project is maintained as open source
 under the MIT license in the root `LICENSE` file.
@@ -78,15 +78,16 @@ boundary. Exact supported OS builds are not yet verified.
 
 The application owns a notification-area icon using the repository's `logo.ico`,
 not an independent visible window. Its localized context menu contains exactly
-Start at sign-in, Enable tabs, About, and Exit. Normal launch starts with tabs disabled
+Start at sign-in, Enable Tabs, About, and Exit. Normal launch starts with tabs disabled
 unless the user previously enabled them. Enabling tabs composes the integration
 controller; disabling tabs or exiting restores managed windows first. The
 explicit test-root mode always restricts capture to its root and never changes
 the persisted enable-tabs preference. Automated live tests must still use this
 scoped mode; a tray action is not authorization to test on unrelated windows.
 
-Preferences use the current user's `Software\Quickky\ExplorerTabs` registry key.
-Startup uses only the application's value in the current-user `Run` key. Menu
+Preferences use the current user's `Software\QTabs` registry key.
+Startup uses only `QTabs` in the current-user `Run` key. Settings and internal
+object names use QTabs identities, without reading or migrating older names. Menu
 text comes from the aligned language catalogs, embedded at build time; locale
 resolution uses an explicit preference when present, then Windows UI language,
 then English. The application manifest requests `asInvoker`, not automatic UAC:
@@ -96,12 +97,12 @@ The root `VERSION` text file is the single version source. CMake
 reads it during configuration and regenerates native build metadata on each
 build through `cmake/build_metadata.cmake`. The executable icon/version resource
 and About dialog use this metadata. About displays author aCHAOS, contact
-`achaosxyz@gmail.com`, the project GitHub link, version, and UTC build time.
+`achaosxyz@gmail.com`, the full clickable project GitHub URL, version, and UTC build time.
 
 ### Build, package, and release contract
 
-Development uses `develop`; `main` records released source. The CMake application
-target remains `QuickkyExplorerTabs`, with output filename `QTabs.exe`. Its hook
+Development uses `develop`; `main` records released source. The CMake project and
+application target are `QTabs`, with output filename `QTabs.exe`. Its hook
 DLL stays `QuickkyExplorerHook.dll`. PowerShell scripts in `scripts/` configure an
 x64 Release build, run the discovery-free `app.smoke` check, and package the EXE,
 DLL, version, license, and user documentation as `QTabs_vMAJOR.MINOR.PATCH.zip`.
@@ -227,6 +228,7 @@ scripts/{common,build,preview-release,publish-release,test-release}.ps1
 logo.ico
 src/app/{main,tray_icon}.cpp
 src/app/workspace_refresh.h
+src/app/single_instance.h
 src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cpp}
 src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
@@ -240,6 +242,7 @@ resources/locales/tray_strings.h.in
 tests/{core_tests,discovery_tests,native_guard_tests,workspace_bridge_tests,workspace_refresh_tests}.cpp
 tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
+tests/app_instance_tests.cpp
 tests/README.md
 docs/design/PROJECT_DESIGN.md
 docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,CHROME,SETTINGS,COMMON}.md
@@ -272,7 +275,8 @@ adds these concrete contracts:
   Explorer folder window. A native Explorer tab is not a Quickky tab.
 - **Group:** ordered Quickky tabs, an active tab, and the common window placement.
 - **Workspace refresh schedule:** application-thread-only pending work and a
-  one-second readiness deadline. New candidates coalesce into a 25 ms timer;
+  one-second readiness deadline. New candidates and unadmitted root-window
+  readiness hints coalesce into a 25 ms timer;
   readiness retries and confirmed native-transfer continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
@@ -320,7 +324,16 @@ forget them or discard their leases.
 The implemented executable flow is:
 
 1. Validate arguments. Normal launch acquires the session-local controller
-   singleton and stop event, using the current user's default object ACLs.
+   singleton and stop event before COM, discovery, or tray creation, using the
+   current user's default object ACLs. `SingleInstance` retains both handles until
+   controller teardown finishes. Duplicate launches exit successfully, including
+   copies launched from another directory. The private kernel-object names are
+   `Local\QTabs.Controller` and `Local\QTabs.Stop`.
+   A short-lived `<singleton>.Startup` mutex makes singleton/stop-event
+   construction atomic with respect to stop requests. Startup waits at most one
+   second for the gate; stop fails immediately while it is held, or when a
+   singleton exists without a stop endpoint. Failure drops the singleton before
+   releasing the gate. No initializing pair is treated as a ready resident.
 2. Initialize COM and create a message-only window, never a file-manager window.
 3. Start discovery and, in resident modes, the localized notification icon.
    Added candidates enter discovered state; unmanaged removals invalidate that
@@ -331,14 +344,17 @@ The implemented executable flow is:
    excluded view is left unmanaged as a whole; snapshots and native add/current-folder
    input use the same policy, not localized window-title matching.
 4. Retain one-second discovery/recovery reconciliation. While a workspace is
-   enabled, newly discovered candidates queue a coalesced 25 ms workspace pass,
+   enabled, newly discovered candidates and create/show/foreground hints for
+   unadmitted root `CabinetWClass` windows queue a coalesced 25 ms workspace pass,
    outside WinEvent/IPC callbacks. Retry readiness at 100 ms intervals for up to
    one second after the latest candidate. A confirmed native transfer queues a
    100 ms continuation even after that deadline, still one mutation per pass;
-   failure or an uncertain outcome does not count as progress. Fast passes reuse
-   discovery's candidate set and retain every normal identity/scope check.
+   failure or an uncertain outcome does not count as progress. Fast passes
+   re-probe discovery before workspace reconciliation, retaining every normal
+   identity/scope check. A readiness hint is not an admission or attachment.
    Disabling cancels fast work; timer creation failure leaves periodic recovery.
-   `--stop` signals the resident;
+   `--stop` pins the existing singleton before opening/signaling its stop event;
+   an absent singleton is a no-op and never signals an orphaned same-name event.
    `--observe-ms N` closes its own bounded observer after 1..600000 milliseconds.
 5. `--snapshot` emits candidate identifiers, generation, and the managed count to
    redirected standard output and exits. `--smoke-test` skips Explorer discovery
@@ -348,7 +364,9 @@ Invalid arguments return `ERROR_BAD_ARGUMENTS` (160); setup/discovery failures
 return nonzero. Stop is idempotent when no controller event exists. Normal
 duplicate launch exits without stopping the original controller. Snapshot and
 bounded modes do not acquire or signal the resident singleton. Object-name
-collisions or inaccessible objects fail rather than changing permissions.
+collisions or inaccessible objects fail rather than changing permissions or
+resetting an existing stop event. Exiting or losing the controller releases its
+handles; a subsequent launch can become the sole resident.
 
 The attachment flow is:
 

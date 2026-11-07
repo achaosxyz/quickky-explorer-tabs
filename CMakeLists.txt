@@ -5,7 +5,7 @@ string(STRIP "${QUICKKY_VERSION}" QUICKKY_VERSION)
 if(NOT QUICKKY_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "VERSION must contain MAJOR.MINOR.PATCH.")
 endif()
-project(QuickkyExplorerTabs VERSION "${QUICKKY_VERSION}" LANGUAGES CXX RC)
+project(QTabs VERSION "${QUICKKY_VERSION}" LANGUAGES CXX RC)
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/VERSION"
@@ -41,11 +41,11 @@ add_custom_target(QuickkyBuildMetadata ALL
 )
 
 if(NOT WIN32 OR NOT MSVC)
-    message(FATAL_ERROR "Quickky Explorer Tabs requires Windows and MSVC.")
+    message(FATAL_ERROR "QTabs requires Windows and MSVC.")
 endif()
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "Quickky Explorer Tabs requires an x86_64 target. Configure with -A x64.")
+    message(FATAL_ERROR "QTabs requires an x86_64 target. Configure with -A x64.")
 endif()
 
 function(quickky_configure_target target)
@@ -122,17 +122,21 @@ target_include_directories(quickky_settings PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(quickky_settings PUBLIC advapi32)
 quickky_configure_target(quickky_settings)
 
-add_executable(QuickkyExplorerTabs WIN32 src/app/main.cpp src/app/tray_icon.cpp
+add_executable(QTabs WIN32 src/app/main.cpp src/app/tray_icon.cpp
     resources/app.manifest "${CMAKE_CURRENT_BINARY_DIR}/generated/app.rc")
-set_target_properties(QuickkyExplorerTabs PROPERTIES OUTPUT_NAME QTabs)
-target_include_directories(QuickkyExplorerTabs PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources")
-target_link_libraries(QuickkyExplorerTabs PRIVATE quickky_workspace quickky_settings shell32 comctl32)
-add_dependencies(QuickkyExplorerTabs QuickkyExplorerHook QuickkyBuildMetadata)
-quickky_configure_target(QuickkyExplorerTabs)
+target_include_directories(QTabs PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+target_link_libraries(QTabs PRIVATE quickky_workspace quickky_settings shell32 comctl32)
+add_dependencies(QTabs QuickkyExplorerHook QuickkyBuildMetadata)
+quickky_configure_target(QTabs)
 
 include(CTest)
 
 if(BUILD_TESTING)
+    add_executable(QTabsAppInstanceTests tests/app_instance_tests.cpp)
+    target_link_libraries(QTabsAppInstanceTests PRIVATE quickky_settings)
+    quickky_configure_target(QTabsAppInstanceTests)
+    add_test(NAME app.instance COMMAND QTabsAppInstanceTests)
+    set_tests_properties(app.instance PROPERTIES TIMEOUT 20)
     add_executable(QuickkyWorkspaceRefreshTests tests/workspace_refresh_tests.cpp)
     target_include_directories(QuickkyWorkspaceRefreshTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     quickky_configure_target(QuickkyWorkspaceRefreshTests)
@@ -163,6 +167,6 @@ if(BUILD_TESTING)
     target_link_libraries(QuickkyDiscoveryTests PRIVATE quickky_capture)
     quickky_configure_target(QuickkyDiscoveryTests)
     add_test(NAME capture.discovery COMMAND QuickkyDiscoveryTests)
-    add_test(NAME app.smoke COMMAND QuickkyExplorerTabs --smoke-test)
+    add_test(NAME app.smoke COMMAND QTabs --smoke-test)
     set_tests_properties(core.model capture.discovery app.smoke app.refresh explorer.native_guard PROPERTIES TIMEOUT 10)
 endif()

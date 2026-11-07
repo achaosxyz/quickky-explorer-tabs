@@ -35,8 +35,8 @@ such as tab identity, attachment identity, and cross-process request/result data
 by controller, scoped workspace DLL, and manual guard probe. It carries target
 HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
 labels, and explicit presentation/input commands. Payloads are value-only.
-The nonce also derives a local cancellation-event name; no handles or C++ object
-pointers cross process boundaries. Ordinary commands are fixed-size. Only a New
+The nonce also derives a `Local\QTabs.Lease.` cancellation-event name; no handles
+or C++ object pointers cross process boundaries. Ordinary commands are fixed-size. Only a New
 input appends an absolute PIDL snapshot (at most 64 KiB, including its terminator);
 the header size covers the whole packet. Validate every item boundary and clone
 the bytes before acknowledging, without COM calls inside the receiver callback.

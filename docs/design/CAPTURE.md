@@ -40,6 +40,10 @@ Quickky group without losing the original window on failure.
   thread. Probe and change-handler exceptions fail discovery instead of unwinding
   through a Win32 callback. An injected inspector is a test seam, not a production
   bypass option for Explorer ownership checks.
+- An optional retry notification reports an unadmitted, unowned top-level
+  `CabinetWClass` after create/show/foreground observation. It carries no trusted
+  identity and only requests bounded deferred discovery while a workspace is
+  enabled. Re-probe through the normal inspector; never attach from this hint.
 
 ## Boundary
 

@@ -17,6 +17,10 @@ diagnostic clipping mode; it remains an explicit synthetic-test fixture.
 Bootstrap Explorer-only integration on the target window's UI thread, bridge
 window messages and commands, and restore Explorer when control is lost.
 
+Hook staging uses a per-run `QTabs-` directory. Registered native/layout messages
+and the per-window attachment property use the `QTabs` prefix; older product
+identities are not supported.
+
 ## Contract
 
 - Target eligible Explorer UI threads only; do not inject arbitrary applications

@@ -2,6 +2,7 @@
 #include "capture/explorer_discovery.h"
 #include "capture/explorer_window_probe.h"
 #include "app/tray_icon.h"
+#include "app/single_instance.h"
 #include "app/workspace_refresh.h"
 #include "explorer/folder_location.h"
 #include "group/workspace_controller.h"
@@ -17,18 +18,17 @@
 #include <string_view>
 
 #if !defined(_M_X64)
-#error Quickky Explorer Tabs requires an x86_64 target.
+#error QTabs requires an x86_64 target.
 #endif
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"QuickkyExplorerTabs.Controller";
-constexpr wchar_t kMutexName[] = L"Local\\QuickkyExplorerTabs.Controller";
-constexpr wchar_t kStopName[] = L"Local\\QuickkyExplorerTabs.Stop";
+constexpr wchar_t kWindowClass[] = L"QTabs.Controller";
+constexpr wchar_t kMutexName[] = L"Local\\QTabs.Controller";
+constexpr wchar_t kStopName[] = L"Local\\QTabs.Stop";
 constexpr UINT_PTR kRefreshTimer = 1;
 constexpr UINT_PTR kExitTimer = 2;
 constexpr UINT_PTR kWorkspaceTimer = 3;
-using Handle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 enum class Mode { Resident, Snapshot, Observe, Smoke, Stop, CaptureTest };
 
@@ -158,21 +158,15 @@ bool WriteSnapshot(const quickky::ExplorerDiscovery& discovery,
 int Run(HINSTANCE instance, const Options& options)
 {
     if (options.mode == Mode::Stop) {
-        const Handle stop(OpenEventW(EVENT_MODIFY_STATE, FALSE, kStopName), CloseHandle);
-        if (!stop) { return GetLastError() == ERROR_FILE_NOT_FOUND ? EXIT_SUCCESS : EXIT_FAILURE; }
-        return SetEvent(stop.get()) ? EXIT_SUCCESS : EXIT_FAILURE;
+        return quickky::SingleInstance::RequestStop(kMutexName, kStopName) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
-    Handle singleton(nullptr, CloseHandle);
-    Handle stop(nullptr, CloseHandle);
+    std::optional<quickky::SingleInstance> singleton;
     const bool resident = options.mode == Mode::Resident || options.mode == Mode::CaptureTest;
     if (resident) {
-        singleton.reset(CreateMutexW(nullptr, FALSE, kMutexName));
-        const auto error = GetLastError();
-        if (!singleton) { return EXIT_FAILURE; }
-        if (error == ERROR_ALREADY_EXISTS) { return EXIT_SUCCESS; }
-        stop.reset(CreateEventW(nullptr, TRUE, FALSE, kStopName));
-        if (!stop || !ResetEvent(stop.get())) { return EXIT_FAILURE; }
+        singleton.emplace(kMutexName, kStopName);
+        if (singleton->state() == quickky::InstanceState::Duplicate) return EXIT_SUCCESS;
+        if (singleton->state() != quickky::InstanceState::Primary) return EXIT_FAILURE;
     }
 
     const Apartment apartment;
@@ -185,7 +179,7 @@ int Run(HINSTANCE instance, const Options& options)
     if (RegisterClassW(&window_class) == 0) { return EXIT_FAILURE; }
 
     ControllerState state;
-    state.stop = stop.get();
+    state.stop = singleton ? singleton->stop_event() : nullptr;
     const HWND window = CreateWindowExW(0, kWindowClass, L"", 0,
         0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, &state);
     if (window == nullptr) { return EXIT_FAILURE; }
@@ -214,6 +208,10 @@ int Run(HINSTANCE instance, const Options& options)
                 } else {
                     capture.OnForeground(identity);
                 }
+            }
+        }, [window, &state]() {
+            if (state.workspace) {
+                ArmWorkspaceRefresh(window, state, state.refresh.Request(GetTickCount64()));
             }
         });
     quickky::TrayIcon tray;
@@ -258,7 +256,7 @@ int Run(HINSTANCE instance, const Options& options)
         }
     }
 
-    const HANDLE stop_handle = stop.get();
+    const HANDLE stop_handle = state.stop;
     const DWORD handle_count = stop_handle != nullptr ? 1 : 0;
     for (;;) {
         const auto result = MsgWaitForMultipleObjectsEx(handle_count,
@@ -278,7 +276,7 @@ int Run(HINSTANCE instance, const Options& options)
                     KillTimer(window, kWorkspaceTimer);
                     if (!state.refresh.Consume()) continue;
                 }
-                if (message.wParam == kRefreshTimer && !discovery.Refresh()) { return EXIT_FAILURE; }
+                if ((message.wParam == kRefreshTimer || fast) && !discovery.Refresh()) { return EXIT_FAILURE; }
                 if ((message.wParam == kRefreshTimer || fast) && workspace) {
                     if (!workspace->Refresh(discovery.windows())) disable();
                     else ArmWorkspaceRefresh(window, state, state.refresh.AfterRefresh(

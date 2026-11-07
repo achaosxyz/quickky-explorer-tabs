@@ -52,7 +52,7 @@ inline std::wstring LeaseEventName(const GUID& nonce)
 {
     wchar_t text[40]{};
     if (!StringFromGUID2(nonce, text, 40)) return {};
-    return std::wstring(L"Local\\QuickkyExplorerTabs.Lease.") + text;
+    return std::wstring(L"Local\\QTabs.Lease.") + text;
 }
 
 inline std::wstring NativeMappingName(const GUID& nonce)

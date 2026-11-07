@@ -19,7 +19,7 @@ try {
     if ($WindowsSdk) { $configure += "-DCMAKE_SYSTEM_VERSION=$WindowsSdk" }
     Invoke-Checked cmake $configure | Out-Host
     Invoke-Checked cmake @('--build', $build, '--config', 'Release', '--target',
-        'QuickkyExplorerTabs', '--parallel', '4') | Out-Host
+        'QTabs', '--parallel', '4') | Out-Host
     Invoke-Checked ctest @('--test-dir', $build, '-C', 'Release', '-R', '^app\.smoke$',
         '--no-tests=error', '--output-on-failure') | Out-Host
 

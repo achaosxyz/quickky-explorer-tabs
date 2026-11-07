@@ -1,9 +1,9 @@
 # Tests
 
-CTest registers six checks when `BUILD_TESTING` is enabled (the default).
+CTest registers seven checks when `BUILD_TESTING` is enabled (the default).
 All checks retain explicit failure handling in Release builds; no third-party
 test framework is required. Timeouts are ten seconds, except the fifteen-second
-workspace bridge check.
+workspace bridge check and twenty-second instance check.
 
 - `core.model`: thirteen groups of pure tests for tab ordering, stable IDs,
   selection/removal, duplicate events, candidate lifetime changes, acknowledgment
@@ -11,9 +11,20 @@ workspace bridge check.
 - `capture.discovery`: real WinEvent/message delivery on hidden, test-owned
   `CabinetWClass` fixtures through a test-local inspector; covers initial scan,
   duplicate scans, creation/destruction, changed identity, eligibility removal,
-  stop/restart, callback exceptions, and production-probe rejection checks.
+  stop/restart, callback exceptions, production-probe rejection, and unready-window
+  retry notifications. A hidden fixture becomes eligible after its sole creation
+  event; a deferred re-probe, not a new lifecycle event, discovers it.
 - `app.smoke`: creates a message-only window, posts its close request, dispatches
   destruction, and exits zero without inspecting or modifying Explorer.
+- `app.instance`: exercises the resident lifetime guard with isolated kernel-object
+  names and test-owned child processes, not a live QTabs controller. It checks
+  concurrent launches from two executable directories, clean and crash restart,
+  duplicate shutdown isolation, wrong-kind/pre-existing object rejection, and
+  stop-request isolation from orphaned same-name events. A separate child holds
+  the startup gate to freeze half-published states with a missing or colliding
+  endpoint; stop must fail without signaling either one.
+  A process-local HKCU override checks QTabs startup/preferences in a unique
+  temporary registry subtree; real application settings are not changed.
 - `app.refresh`: uses a synthetic clock to check prompt/coalesced scheduling,
   bounded readiness retries, reentrant notifications, acknowledged-transfer
   continuation, cancellation, and long-uptime timestamps. It does not measure

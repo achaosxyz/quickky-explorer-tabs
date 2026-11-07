@@ -17,7 +17,7 @@ The message loop checks its stop event while draining messages as well as in
 the outer wait. A continually busy reconciliation timer queue must not starve
 shutdown.
 
-The application target is `QuickkyExplorerTabs`; its distributed filename is
+The CMake project and application target are `QTabs`; its distributed filename is
 `QTabs.exe`. The adjacent `QuickkyExplorerHook.dll` retains its existing name.
 Version and build-time resources come from the root `VERSION` file and the
 per-build metadata generator. Packaging and publication are defined by the
@@ -28,8 +28,17 @@ before its stack context/COM apartment. While a tray popup or About dialog owns
 a nested message loop, the controller timer observes `--stop` and dismisses only
 those application-owned popups so orderly restoration can finish.
 
-- Resident launch owns a session-local singleton and stop event, STA COM, and a
-  message-only controller endpoint. Duplicate launch exits without replacing it.
+- `SingleInstance` owns a session-local singleton and stop event before resident
+  initialization. Its handles outlive the controller, tray, workspace, and COM
+  teardown. Duplicate launch exits successfully without resetting the stop event,
+  inspecting Explorer, creating a second tray icon, or replacing the resident.
+  Concurrent launches and copies in different directories use the same identity.
+  The private kernel-object names are `Local\QTabs.Controller` and
+  `Local\QTabs.Stop`; no older application identities are consulted. Existing
+  stop-event collisions fail without mutation. A short-lived `<singleton>.Startup`
+  mutex serializes construction with stop requests. Startup waits at most one
+  second for this gate; stop fails immediately while it is held. Failed
+  construction drops its singleton before releasing the gate.
 - The notification icon has a hidden top-level broker window so it can receive
   `TaskbarCreated` broadcasts and own the popup menu. It is never shown as an
   application window. The icon is loaded from the EXE's `logo.ico` resource.
@@ -38,7 +47,10 @@ those application-owned popups so orderly restoration can finish.
 - `--capture-test-root PATH` validates an existing directory, uses the resident
   singleton, and enables capture only within that root. It does not persist the
   global tabs setting.
-- `--stop` signals the resident stop event; absence is a successful no-op.
+- `--stop` first opens the resident singleton, holding its identity until the
+  stop event is signaled. An absent singleton is a successful no-op, even if an
+  unrelated same-name stop event exists. A singleton without an available stop
+  endpoint, an initializing resident, and wrong-kind/inaccessible objects fail.
   Inaccessible or colliding kernel objects are not reconfigured.
 - `--snapshot` emits one read-only JSON candidate snapshot to redirected stdout;
   `--observe-ms N` observes for 1..600000 milliseconds without replacing the
@@ -53,8 +65,8 @@ those application-owned popups so orderly restoration can finish.
 `TrayIcon` owns notification registration, taskbar recreation, localized popup
 presentation, the explicitly requested About dialog, and icon cleanup. The four
 actions are startup, tabs enablement, About, and exit. About displays the author,
-email, version, UTC build timestamp, and a clickable GitHub link. It opens a
-browser only when that link is activated.
+email, version, UTC build timestamp, and the full GitHub URL as a clickable link.
+It opens a browser only when that link is activated.
 
 Main-loop policy composes the workspace and settings. The application retains
 one staged hook library across enable/disable cycles. Its IPC callback validates
@@ -62,15 +74,18 @@ and queues bounded input; it never performs COM navigation or visibility changes
 inside that callback. Group actions execute after callback return.
 
 `WorkspaceRefreshSchedule` owns only coalesced scheduling on the controller
-thread. New-candidate observations arm one 25 ms workspace timer, never perform
-attachment in the WinEvent callback, and do not reset an already pending timer.
+thread. New-candidate observations and discovery readiness hints arm one 25 ms
+workspace timer, never perform attachment in the WinEvent callback, and do not
+reset an already pending timer.
 Fast passes retry at 100 ms intervals until the one-second readiness window
 expires. Confirmed native-transfer progress also requests a 100 ms continuation;
 unconfirmed mutations do not extend that chain. These are requested timer delays,
 not end-to-end latency guarantees. The one-second discovery/recovery timer stays
-unchanged; fast passes reuse its event-maintained candidate map. Disable clears
-pending work and kills the fast timer. Failure to create it falls back to periodic
-reconciliation. Posted fast work never runs inside nested COM or tray loops.
+unchanged; fast passes re-probe discovery before reconciling the candidate map,
+so a window rejected before initialization need not wait for periodic discovery.
+Disable clears pending work and kills the fast timer. Failure to create it falls
+back to periodic reconciliation. Posted fast work never runs inside nested COM
+or tray loops.
 
 Discovery removal does not forget intentionally hidden managed windows.
 Workspace reconciliation revalidates them, including lifetime, process/user/

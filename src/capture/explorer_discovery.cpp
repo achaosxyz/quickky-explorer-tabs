@@ -15,8 +15,8 @@ struct ExplorerDiscovery::Enumeration {
     bool failed = false;
 };
 
-ExplorerDiscovery::ExplorerDiscovery(Inspector inspector, Handler handler)
-    : inspector_(std::move(inspector)), handler_(std::move(handler))
+ExplorerDiscovery::ExplorerDiscovery(Inspector inspector, Handler handler, RetryHandler retry)
+    : inspector_(std::move(inspector)), handler_(std::move(handler)), retry_(std::move(retry))
 {
 }
 
@@ -148,7 +148,7 @@ void ExplorerDiscovery::OnEvent(DWORD event, HWND window, LONG object, LONG chil
             if (found != windows_.end()) {
                 const WindowChange change{WindowChangeKind::Foreground, found->second};
                 handler_(change);
-            }
+            } else RequestRetry(window);
         }
         return;
     }
@@ -171,7 +171,20 @@ void ExplorerDiscovery::OnEvent(DWORD event, HWND window, LONG object, LONG chil
         || (GetClassNameW(window, class_name.data(), static_cast<int>(class_name.size())) != 0
             && std::wcscmp(class_name.data(), L"CabinetWClass") == 0)) {
         Refresh();
+        if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_SHOW) RequestRetry(window);
     }
+}
+
+void ExplorerDiscovery::RequestRetry(HWND window)
+{
+    // A raw lifecycle event can precede probe readiness. This is only a hint to
+    // re-run discovery later, never an admitted identity or attachment request.
+    if (!retry_ || failed_ || current_ != this ||
+        windows_.count(reinterpret_cast<NativeWindow>(window)) ||
+        GetAncestor(window, GA_ROOT) != window || GetWindow(window, GW_OWNER)) return;
+    std::array<wchar_t, 64> class_name{};
+    if (GetClassNameW(window, class_name.data(), static_cast<int>(class_name.size())) &&
+        std::wcscmp(class_name.data(), L"CabinetWClass") == 0) retry_();
 }
 
 } // namespace quickky

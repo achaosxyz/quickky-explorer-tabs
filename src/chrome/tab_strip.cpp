@@ -87,7 +87,7 @@ bool TabStrip::Create(HWND parent, Input input, std::weak_ptr<void> lifetime, bo
         FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
             reinterpret_cast<IUnknown**>(text_factory_.GetAddressOf())))) return false;
     window_ = CreateWindowExW(classic_caption_ ? WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE : 0,
-        kClass, L"Quickky Explorer Tabs", classic_caption_ ? WS_POPUP : WS_CHILD | WS_VISIBLE,
+        kClass, L"QTabs", classic_caption_ ? WS_POPUP : WS_CHILD | WS_VISIBLE,
         0, 0, 0, 0, parent, nullptr, module, this);
     if (!window_) return false;
     if (classic_caption_) {
@@ -110,7 +110,7 @@ bool TabStrip::Configure(const GuardRequest& request)
     }
     const bool selection_changed = state_.active != request.active || state_.count != request.count;
     state_ = request;
-    const auto title = std::wstring(L"Quickky Explorer Tabs (") + std::to_wstring(state_.count) + L")";
+    const auto title = std::wstring(L"QTabs (") + std::to_wstring(state_.count) + L")";
     SetWindowTextW(window_, title.c_str());
     Layout();
     for (unsigned i = 0; i < state_.count; ++i) {

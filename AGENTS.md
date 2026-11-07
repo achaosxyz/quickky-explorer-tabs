@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Quickky Explorer Tabs is a Windows File Explorer enhancement for users who want
+QTabs is a Windows File Explorer enhancement for users who want
 folder windows collected into a single tabbed workspace. Its accepted scope
 uses Quickky-owned rectangular tabs on Windows 10 and preserves native Explorer
 tabs on Windows 11, collecting new windows through native tab-drop
