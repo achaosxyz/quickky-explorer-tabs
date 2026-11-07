@@ -10,6 +10,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="VERSION"><img src="https://img.shields.io/badge/preview-experimental-orange" alt="Experimental preview"></a>
   <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">
+  <a href="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml?query=branch%3Adevelop" title="Latest develop smoke-test status and run history">
+    <img src="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml/badge.svg?branch=develop" alt="Windows smoke (develop)">
+  </a>
 </p>
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>

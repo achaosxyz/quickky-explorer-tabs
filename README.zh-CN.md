@@ -10,6 +10,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT 许可证"></a>
   <a href="VERSION"><img src="https://img.shields.io/badge/preview-experimental-orange" alt="实验预览版"></a>
   <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">
+  <a href="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml?query=branch%3Adevelop" title="develop 分支测试状态与运行记录">
+    <img src="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml/badge.svg?branch=develop" alt="Windows smoke（develop）">
+  </a>
 </p>
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
