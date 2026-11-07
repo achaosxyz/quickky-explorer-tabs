@@ -61,6 +61,17 @@ one staged hook library across enable/disable cycles. Its IPC callback validates
 and queues bounded input; it never performs COM navigation or visibility changes
 inside that callback. Group actions execute after callback return.
 
+`WorkspaceRefreshSchedule` owns only coalesced scheduling on the controller
+thread. New-candidate observations arm one 25 ms workspace timer, never perform
+attachment in the WinEvent callback, and do not reset an already pending timer.
+Fast passes retry at 100 ms intervals until the one-second readiness window
+expires. Confirmed native-transfer progress also requests a 100 ms continuation;
+unconfirmed mutations do not extend that chain. These are requested timer delays,
+not end-to-end latency guarantees. The one-second discovery/recovery timer stays
+unchanged; fast passes reuse its event-maintained candidate map. Disable clears
+pending work and kills the fast timer. Failure to create it falls back to periodic
+reconciliation. Posted fast work never runs inside nested COM or tray loops.
+
 Discovery removal does not forget intentionally hidden managed windows.
 Workspace reconciliation revalidates them, including lifetime, process/user/
 session/integrity, desktop, native view, and the optional folder boundary.

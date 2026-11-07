@@ -13,7 +13,11 @@ The native backend retains a main frame and admits eligible source frames only
 after validating every folder against the optional test root. It snapshots the
 active source GUID/PIDL, acknowledges native destination creation, and removes
 only that same source GUID after revalidation. Remaining source tabs are handled
-on later reconciliations. A mutation with an unsuccessful or uncertain outcome
+on later reconciliations. Each pass reports confirmed native-transfer progress
+as a scheduling hint so the application can queue the next pass without waiting
+for its one-second recovery timer. The hint resets before every pass and on stop;
+it does not relax validation, authorize another mutation, or infer rollback.
+A mutation with an unsuccessful or uncertain outcome
 quarantines that source identity until disable/re-enable; automatic retries must
 not duplicate tabs. Disable/exit removes integration without splitting native
 tabs back into windows.

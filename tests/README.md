@@ -1,6 +1,6 @@
 # Tests
 
-CTest registers five checks when `BUILD_TESTING` is enabled (the default).
+CTest registers six checks when `BUILD_TESTING` is enabled (the default).
 All checks retain explicit failure handling in Release builds; no third-party
 test framework is required. Timeouts are ten seconds, except the fifteen-second
 workspace bridge check.
@@ -14,6 +14,10 @@ workspace bridge check.
   stop/restart, callback exceptions, and production-probe rejection checks.
 - `app.smoke`: creates a message-only window, posts its close request, dispatches
   destruction, and exits zero without inspecting or modifying Explorer.
+- `app.refresh`: uses a synthetic clock to check prompt/coalesced scheduling,
+  bounded readiness retries, reentrant notifications, acknowledged-transfer
+  continuation, cancellation, and long-uptime timestamps. It does not measure
+  real Explorer readiness or end-to-end collection latency.
 - `explorer.native_guard`: rejects additional synthetic native-view children
   only beneath its selected hidden fixture, and restores creation on detach.
 - `workspace.bridge`: loads the real DLL into the test process, uses hidden
@@ -21,7 +25,10 @@ workspace bridge check.
   configure/presentation bounds, creation interception, normal detach, lease
   cancellation recovery, prepare/commit rejection, authenticated close,
   destruction during initialization, root/child layout and label configuration,
-  directory boundaries, and locale resolution. It never
+  directory boundaries, and locale resolution. Read-only Shell metadata cases
+  exclude Control Panel aliases/descendants/applets and namespace junctions,
+  while retaining normal virtual roots and an owned ordinary folder with a
+  Control Panel-like name. No management window is opened. It never
   injects into real Explorer or modifies user settings.
 
 These tests do not prove native-tab replacement, visible UI, or recovery on real

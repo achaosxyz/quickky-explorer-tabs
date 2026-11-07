@@ -98,9 +98,10 @@ controller: a different integrity level excludes ordinary Explorer candidates.
 UAC is not needed for these operations.
 
 CTest runs `core.model`, `capture.discovery`, `explorer.native_guard`,
-`workspace.bridge`, and `app.smoke`. Fixtures are hidden test-owned windows, not
+`workspace.bridge`, `app.refresh`, and `app.smoke`. Fixtures are hidden test-owned windows, not
 real Explorer attachment. Bridge tests load the DLL only into the test process.
 `app.smoke` skips discovery and closes its message-only window.
+`app.refresh` checks scheduling with a synthetic clock, not live collection speed.
 Invalid arguments return 160 (`ERROR_BAD_ARGUMENTS`). Use `"-DBUILD_TESTING=OFF"`
 in a separate build directory only when intentionally omitting test executables.
 

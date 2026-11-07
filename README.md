@@ -29,6 +29,7 @@ browsing window or a second application to manage your files.
 - Windows 11 keeps its native tab bar, without a second bar drawn over it.
 - Windows 10 rectangular tabs, with maximize, minimize, restore, and window recovery.
 - Automatic collection of eligible new folder windows into one workspace.
+- Control Panel, Printers, and connection-management pages stay outside the workspace.
 - Switch folders by selecting a tab; close a tab with its close button.
 - Open another tab at the active folder's **current** location with **+**.
 - Windows 11 groups stay in Explorer when Quickky is disabled or exits.
@@ -89,6 +90,9 @@ is verified. Unsupported classic caption layouts stay separate rather than cover
 Explorer's file area. Uncertain merges are not automatically retried. A timeout is
 not a rollback: an already-started native operation may still complete.
 Administrator privileges are not required.
+
+Collection is not instantaneous: Explorer must finish initializing its folder
+view, and a busy shell can still delay merging. A separate window may appear briefly.
 
 ## Feedback
 

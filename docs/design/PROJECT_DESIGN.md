@@ -52,6 +52,8 @@ The accepted requirements are:
   quarantine the source identity: an in-flight native call may finish after
   timeout, so failure is not proof of rollback or source preservation.
 - Automatically collect newly opened Explorer folder windows into the workspace.
+  Exclude Control Panel and related management namespaces even when Explorer
+  owns their windows. Preserve ordinary filesystem and virtual browsing roots.
 - Run the controller in the background, with tabs attached to real Explorer
   windows; do not provide an independent Quickky file-manager window.
 - On Windows 10, `+` opens a new Explorer folder window at the active Quickky
@@ -224,6 +226,7 @@ scripts/{common,build,preview-release,publish-release,test-release}.ps1
 .github/workflows/{windows-smoke,release}.yml
 logo.ico
 src/app/{main,tray_icon}.cpp
+src/app/workspace_refresh.h
 src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cpp}
 src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
@@ -234,7 +237,7 @@ src/common/{window_identity,hook_protocol}.h
 resources/{app.manifest,app.rc.in,resource.h,runtime_files.h.in,logo.png,tab-preview.png}
 resources/locales/{en-US,zh-CN}.json
 resources/locales/tray_strings.h.in
-tests/{core_tests,discovery_tests,native_guard_tests,workspace_bridge_tests}.cpp
+tests/{core_tests,discovery_tests,native_guard_tests,workspace_bridge_tests,workspace_refresh_tests}.cpp
 tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
 tests/README.md
@@ -268,6 +271,10 @@ adds these concrete contracts:
 - **Quickky tab:** a stable application-owned ID associated with a managed
   Explorer folder window. A native Explorer tab is not a Quickky tab.
 - **Group:** ordered Quickky tabs, an active tab, and the common window placement.
+- **Workspace refresh schedule:** application-thread-only pending work and a
+  one-second readiness deadline. New candidates coalesce into a 25 ms timer;
+  readiness retries and confirmed native-transfer continuations use 100 ms.
+  This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
   Quickky changes without closing the user's Explorer window. A version-5 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
@@ -319,7 +326,19 @@ The implemented executable flow is:
    Added candidates enter discovered state; unmanaged removals invalidate that
    identity. Previously enabled preferences or the explicit test root activate
    the selected platform workspace, subject to identity, scope, and capability checks.
-4. Reconcile on events and a one-second timer. `--stop` signals the resident;
+   Folder admission rejects Control Panel roots, their descendants, and namespace
+   components registered as Control Panel applets. A native frame containing any
+   excluded view is left unmanaged as a whole; snapshots and native add/current-folder
+   input use the same policy, not localized window-title matching.
+4. Retain one-second discovery/recovery reconciliation. While a workspace is
+   enabled, newly discovered candidates queue a coalesced 25 ms workspace pass,
+   outside WinEvent/IPC callbacks. Retry readiness at 100 ms intervals for up to
+   one second after the latest candidate. A confirmed native transfer queues a
+   100 ms continuation even after that deadline, still one mutation per pass;
+   failure or an uncertain outcome does not count as progress. Fast passes reuse
+   discovery's candidate set and retain every normal identity/scope check.
+   Disabling cancels fast work; timer creation failure leaves periodic recovery.
+   `--stop` signals the resident;
    `--observe-ms N` closes its own bounded observer after 1..600000 milliseconds.
 5. `--snapshot` emits candidate identifiers, generation, and the managed count to
    redirected standard output and exits. `--smoke-test` skips Explorer discovery

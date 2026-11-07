@@ -43,7 +43,9 @@ number. `WM_COPYDATA` only copies and queues the command. A registered posted
 message executes it outside input-synchronous dispatch, publishes its result,
 and signals a nonce-named completion event. The controller waits with bounded
 sent-message servicing but does not dispatch posted controller commands/timers.
-The target checks the cancellation lease before mutation.
+The target checks the cancellation lease before mutation. Received native
+snapshots and target-side native add also apply the shared folder-admission
+policy; Control Panel and management namespace PIDLs cannot become transfer inputs.
 A timeout cancels the attachment: neither side may reuse that exchange. It cannot
 interrupt a synchronous native call already in progress. A failed native exchange
 therefore means unconfirmed completion, not rollback or a preserved source; the

@@ -6,7 +6,9 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 #include <dwmapi.h>
+#include <knownfolders.h>
 
 namespace {
 
@@ -696,6 +698,78 @@ void TestNativeHostLoss(HWND sender, HMODULE module)
         "Missing native host must reject commit before custom drawing");
 }
 
+void TestFolderAdmission()
+{
+    Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)), "Initialize read-only Shell metadata tests");
+    struct Apartment { ~Apartment() { CoUninitialize(); } } apartment;
+    unsigned namespace_case = 0;
+    const auto parse = [&namespace_case](const wchar_t* name) {
+        ++namespace_case;
+        PIDLIST_ABSOLUTE value = nullptr;
+        const auto result = SHParseDisplayName(name, nullptr, &value, 0, nullptr);
+        if (FAILED(result)) std::cerr << "Namespace fixture " << namespace_case << " HRESULT " << std::hex << result << std::dec << '\n';
+        Check(SUCCEEDED(result) && value,
+            "Resolve a namespace PIDL without opening an Explorer window");
+        return quickky::OwnedPidl(value);
+    };
+    for (const auto id : {&FOLDERID_ControlPanelFolder, &FOLDERID_ConnectionsFolder, &FOLDERID_PrintersFolder}) {
+        PIDLIST_ABSOLUTE value = nullptr;
+        Check(SUCCEEDED(SHGetKnownFolderIDList(*id, 0, nullptr, &value)) && value,
+            "Resolve a system management namespace");
+        Check(!quickky::DescribeFolder(quickky::OwnedPidl(value)), "Exclude management namespaces from collection");
+    }
+    for (const auto name : {
+        L"::{26EE0668-A00A-44D7-9371-BEB064C98683}",
+        L"::{21ec2020-3aea-1069-a2dd-08002b30309d}",
+        L"::{26EE0668-A00A-44D7-9371-BEB064C98683}\\0\\::{7007ACC7-3202-11D1-AAD2-00805FC1270E}",
+        L"::{21EC2020-3AEA-1069-A2DD-08002B30309D}\\::{2227A280-3AEA-1069-A2DE-08002B30309D}",
+        L"shell:::{7B81BE6A-CE2B-4676-A29E-EB907A5126C5}"}) {
+        Check(!quickky::DescribeFolder(parse(name)), "Exclude root aliases, descendants and directly addressed applets");
+    }
+    for (const auto id : {&FOLDERID_ComputerFolder, &FOLDERID_Libraries, &FOLDERID_RecycleBinFolder, &FOLDERID_NetworkFolder}) {
+        PIDLIST_ABSOLUTE value = nullptr;
+        Check(SUCCEEDED(SHGetKnownFolderIDList(*id, 0, nullptr, &value)) && value,
+            "Resolve a virtual browsing root");
+        Check(quickky::DescribeFolder(quickky::OwnedPidl(value)).has_value(),
+            "Keep normal virtual browsing roots eligible");
+    }
+    for (const auto id : {L"{F874310E-B6B7-47DC-BC84-B9E6B38F5903}", L"{679F85CB-0220-4080-B29B-5540CC05AAB6}"}) {
+        PIDLIST_ABSOLUTE value = nullptr;
+        const auto result = SHParseDisplayName((std::wstring(L"shell:::") + id).c_str(), nullptr, &value, 0, nullptr);
+        quickky::OwnedPidl pidl(value);
+        if (SUCCEEDED(result) && pidl) {
+            Check(quickky::DescribeFolder(std::move(pidl)).has_value(), "Keep parseable Home/Quick Access roots eligible");
+        } else {
+            // Registration alone does not guarantee standalone desktop parsing.
+            std::cout << "SKIP: Home/Quick Access namespace is not independently parseable on this host\n";
+        }
+    }
+    wchar_t temporary[MAX_PATH]{}, suffix[39]{};
+    GUID nonce{};
+    const auto length = GetTempPathW(MAX_PATH, temporary);
+    Check(length && length < MAX_PATH && SUCCEEDED(CoCreateGuid(&nonce)) && StringFromGUID2(nonce, suffix, 39),
+        "Create an isolated folder-policy fixture name");
+    struct Fixture {
+        std::wstring root, ordinary, junction;
+        bool owned = false;
+        ~Fixture() {
+            if (owned) { RemoveDirectoryW(junction.c_str()); RemoveDirectoryW(ordinary.c_str()); RemoveDirectoryW(root.c_str()); }
+        }
+    } fixture;
+    fixture.root = std::wstring(temporary) + L"QuickkyFolderPolicy-" + suffix;
+    fixture.ordinary = fixture.root + L"\\Control Panel";
+    fixture.junction = fixture.root + L"\\Tasks.{ed7ba470-8e54-465e-825c-99712043e01c}";
+    fixture.owned = CreateDirectoryW(fixture.root.c_str(), nullptr) != FALSE;
+    Check(fixture.owned && CreateDirectoryW(fixture.ordinary.c_str(), nullptr) &&
+        CreateDirectoryW(fixture.junction.c_str(), nullptr), "Create only owned empty fixture folders");
+    Check(quickky::DescribeFolder(parse(fixture.ordinary.c_str())).has_value(),
+        "Do not blacklist ordinary folders by their display names");
+    Check(!quickky::DescribeFolder(parse(fixture.junction.c_str())), "Exclude a Control Panel namespace junction");
+    wchar_t executable[MAX_PATH]{};
+    Check(GetModuleFileNameW(nullptr, executable, MAX_PATH) && !quickky::DescribeFolder(parse(executable)),
+        "Reject non-folder Shell items");
+}
+
 void TestFolderSnapshots()
 {
     unsigned char bytes[]{4, 0, 0x42, 0x12, 0, 0};
@@ -913,6 +987,7 @@ int main(int argc, char* argv[])
         if (classic) Check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != FALSE,
             "Use physical caption coordinates for the interactive fixture");
         TestDirectoryBoundaryAndLocale();
+        TestFolderAdmission();
         TestFolderSnapshots();
         RegisterSyntheticClasses();
         SyntheticTarget target;

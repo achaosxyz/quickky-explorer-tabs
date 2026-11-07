@@ -212,8 +212,9 @@ bool HookClient::ReadNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& fo
 {
     NativeExchange packet;
     if (!Exchange(GuardCommand::NativeSnapshot, packet) || !packet.count || packet.count > kMaxNativeTabs) return false;
-    folder = CloneFolderSnapshot(packet.folder, packet.folder_bytes);
-    if (!folder) return false;
+    auto location = DescribeFolder(CloneFolderSnapshot(packet.folder, packet.folder_bytes));
+    if (!location) return false;
+    folder = std::move(location->pidl);
     tabs.assign(packet.tabs, packet.tabs + packet.count);
     active = packet.active;
     return true;

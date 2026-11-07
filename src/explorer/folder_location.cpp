@@ -17,6 +17,38 @@ namespace quickky {
 namespace {
 using Microsoft::WRL::ComPtr;
 
+bool IsManagementNamespace(const std::wstring& parsing_name)
+{
+    constexpr const wchar_t* roots[] = {
+        L"{26EE0668-A00A-44D7-9371-BEB064C98683}", // Control Panel categories
+        L"{21EC2020-3AEA-1069-A2DD-08002B30309D}", // Classic Control Panel
+        L"{ED7BA470-8E54-465E-825C-99712043E01C}", // All Control Panel tasks
+        L"{7007ACC7-3202-11D1-AAD2-00805FC1270E}", // Network Connections
+        L"{2227A280-3AEA-1069-A2DE-08002B30309D}"  // Printers
+    };
+    for (std::size_t offset = parsing_name.find(L'{'); offset != std::wstring::npos;
+         offset = parsing_name.find(L'{', offset + 1)) {
+        // Canonical ::{CLSID} components and folder.{CLSID} junctions identify
+        // namespaces independently of localized captions or ordinary folder names.
+        const bool component = offset >= 2 && parsing_name.compare(offset - 2, 2, L"::") == 0 &&
+            (offset == 2 || parsing_name[offset - 3] == L'\\');
+        const bool junction = offset && parsing_name[offset - 1] == L'.';
+        if ((!component && !junction) || parsing_name.size() - offset < 38 ||
+            parsing_name[offset + 37] != L'}' || (parsing_name.size() > offset + 38 &&
+                parsing_name[offset + 38] != L'\\')) continue;
+        auto name = parsing_name.substr(offset, 38);
+        GUID id{};
+        if (FAILED(CLSIDFromString(name.data(), &id))) continue;
+        for (const auto root : roots) if (_wcsicmp(name.c_str(), root) == 0) return true;
+        // Directly addressed applets need not retain a Control Panel parent PIDL.
+        const auto key = L"CLSID\\" + name;
+        DWORD bytes = 0;
+        if (RegGetValueW(HKEY_CLASSES_ROOT, key.c_str(), L"System.ControlPanel.Category",
+            RRF_RT_ANY, nullptr, nullptr, &bytes) == ERROR_SUCCESS) return true;
+    }
+    return false;
+}
+
 std::optional<FolderLocation> ReadFolder(IWebBrowserApp* browser)
 {
     ComPtr<IServiceProvider> services;
@@ -39,6 +71,12 @@ std::optional<FolderLocation> ReadFolder(IWebBrowserApp* browser)
 std::optional<FolderLocation> DescribeFolder(OwnedPidl pidl)
 {
     if (!pidl) return std::nullopt;
+    ComPtr<IShellItem> item;
+    SFGAOF attributes = 0;
+    if (FAILED(SHCreateItemFromIDList(pidl.get(), IID_PPV_ARGS(&item))) ||
+        FAILED(item->GetAttributes(SFGAO_FOLDER, &attributes)) || !(attributes & SFGAO_FOLDER)) {
+        return std::nullopt;
+    }
     FolderLocation result;
     result.pidl = std::move(pidl);
     PWSTR parsing = nullptr;
@@ -47,6 +85,7 @@ std::optional<FolderLocation> DescribeFolder(OwnedPidl pidl)
     }
     const std::unique_ptr<wchar_t, ShellMemoryDeleter> parsing_owner(parsing);
     result.parsing_name = parsing;
+    if (IsManagementNamespace(result.parsing_name)) return std::nullopt;
     PWSTR display = nullptr;
     if (SUCCEEDED(SHGetNameFromIDList(result.pidl.get(), SIGDN_NORMALDISPLAY, &display))) {
         const std::unique_ptr<wchar_t, ShellMemoryDeleter> display_owner(display);

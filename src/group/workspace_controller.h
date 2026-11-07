@@ -21,6 +21,8 @@ public:
     ~WorkspaceController();
     bool Initialize();
     bool Refresh(const std::map<NativeWindow, WindowCandidate>& visible);
+    // Scheduling hint for the last pass, never a claim about an uncertain move.
+    bool native_transfer_completed() const noexcept { return native_transferred_; }
     bool QueueInput(WPARAM sender, LPARAM packet);
     bool ProcessInput();
     void Stop();
@@ -46,6 +48,7 @@ private:
     WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
     bool placed_ = false;
     bool native_ = false;
+    bool native_transferred_ = false;
     NativeWindow main_ = 0;
     std::map<NativeWindow, WindowCandidate> quarantined_;
 };

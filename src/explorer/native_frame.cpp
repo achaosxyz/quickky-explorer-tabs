@@ -165,11 +165,14 @@ HRESULT NativeFrame::Add(PCIDLIST_ABSOLUTE folder, GUID& created)
     created = {};
     std::vector<GUID> before;
     GUID active{};
-    if (!folder || !ReadTabs(before, active) || before.size() >= kMaxNativeTabs) return E_FAIL;
+    if (!folder) return E_FAIL;
+    auto location = DescribeFolder(OwnedPidl(ILCloneFull(folder)));
+    if (!location) return E_ACCESSDENIED;
+    if (!ReadTabs(before, active) || before.size() >= kMaxNativeTabs) return E_FAIL;
     if (available_ && !available_()) return E_ABORT;
     // Entry point 4 is the inspected native tab-drop path. Native acknowledgment
     // precedes any source removal; no explorer.exe launch or whole-frame close.
-    const auto result = AddAtOriginal(folder, 4, static_cast<int>(before.size()), &created);
+    const auto result = AddAtOriginal(location->pidl.get(), 4, static_cast<int>(before.size()), &created);
     if (FAILED(result)) return result;
     std::vector<GUID> after;
     if (!ReadTabs(after, active) || std::none_of(after.begin(), after.end(),
@@ -181,6 +184,8 @@ HRESULT NativeFrame::Add(PCIDLIST_ABSOLUTE folder, GUID& created)
 
 HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder)
 {
+    // Keep naming/metadata COM callouts out of this final source revalidation.
+    // Admission has already checked the transfer's folder namespace.
     std::vector<GUID> tabs;
     GUID active{};
     FolderLocation folder;
@@ -225,7 +230,7 @@ HRESULT STDMETHODCALLTYPE NativeFrame::Plus(void* self, PCIDLIST_ABSOLUTE folder
     try {
         if (!folder && entry == 1 && lifetime && frame->available_()) {
             std::vector<GUID> tabs; GUID active{}; FolderLocation location;
-            if (frame->Snapshot(tabs, active, location)) current = std::move(location);
+            if (frame->Snapshot(tabs, active, location)) current = DescribeFolder(std::move(location.pidl));
         }
         if (current && frame->Valid() && frame->available_()) folder = current->pidl.get();
     } catch (...) { /* Keep the original native default if location lookup fails. */ }
@@ -243,7 +248,7 @@ HRESULT STDMETHODCALLTYPE NativeFrame::PlusAt(void* self, PCIDLIST_ABSOLUTE fold
     try {
         if (!folder && entry == 1 && lifetime && frame->available_()) {
             std::vector<GUID> tabs; GUID active{}; FolderLocation location;
-            if (frame->Snapshot(tabs, active, location)) current = std::move(location);
+            if (frame->Snapshot(tabs, active, location)) current = DescribeFolder(std::move(location.pidl));
         }
         if (current && frame->Valid() && frame->available_()) folder = current->pidl.get();
     } catch (...) { /* Keep the original native default if location lookup fails. */ }

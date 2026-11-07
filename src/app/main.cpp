@@ -2,6 +2,7 @@
 #include "capture/explorer_discovery.h"
 #include "capture/explorer_window_probe.h"
 #include "app/tray_icon.h"
+#include "app/workspace_refresh.h"
 #include "explorer/folder_location.h"
 #include "group/workspace_controller.h"
 #include "settings/preferences.h"
@@ -26,6 +27,7 @@ constexpr wchar_t kMutexName[] = L"Local\\QuickkyExplorerTabs.Controller";
 constexpr wchar_t kStopName[] = L"Local\\QuickkyExplorerTabs.Stop";
 constexpr UINT_PTR kRefreshTimer = 1;
 constexpr UINT_PTR kExitTimer = 2;
+constexpr UINT_PTR kWorkspaceTimer = 3;
 using Handle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
 enum class Mode { Resident, Snapshot, Observe, Smoke, Stop, CaptureTest };
@@ -40,7 +42,14 @@ struct ControllerState {
     quickky::WorkspaceController* workspace = nullptr;
     quickky::TrayIcon* tray = nullptr;
     HANDLE stop = nullptr;
+    quickky::WorkspaceRefreshSchedule refresh;
 };
+
+void ArmWorkspaceRefresh(HWND window, ControllerState& state, unsigned delay)
+{
+    // Preserve the periodic fallback if this optional fast timer cannot be armed.
+    if (delay && !SetTimer(window, kWorkspaceTimer, delay, nullptr)) state.refresh.Reset();
+}
 
 struct ControllerWindowLifetime {
     HWND window;
@@ -187,13 +196,16 @@ int Run(HINSTANCE instance, const Options& options)
     quickky::ExplorerWindowProbe probe;
     quickky::ExplorerDiscovery discovery(
         [&probe](HWND candidate) { return probe.Inspect(candidate); },
-        [&capture, &state](const quickky::WindowChange& change) {
+        [window, &capture, &state](const quickky::WindowChange& change) {
             const auto existing = capture.Find(change.window.handle);
             if (state.workspace && existing &&
                 (existing->state == quickky::CaptureState::Managed ||
                  existing->state == quickky::CaptureState::Restoring)) return;
             if (change.kind == quickky::WindowChangeKind::Added) {
                 capture.Observe(change.window);
+                if (state.workspace) {
+                    ArmWorkspaceRefresh(window, state, state.refresh.Request(GetTickCount64()));
+                }
             } else if (const auto record = capture.Find(change.window.handle);
                 record != nullptr && record->window.window == change.window) {
                 const auto identity = record->window;
@@ -214,6 +226,8 @@ int Run(HINSTANCE instance, const Options& options)
     state.tray = &tray;
     const auto disable = [&]() {
         state.workspace = nullptr;
+        KillTimer(window, kWorkspaceTimer);
+        state.refresh.Reset();
         workspace.reset();
     };
     const auto enable = [&]() {
@@ -222,6 +236,7 @@ int Run(HINSTANCE instance, const Options& options)
         workspace = std::move(next);
         state.workspace = workspace.get();
         if (!workspace->Refresh(discovery.windows())) { disable(); return false; }
+        ArmWorkspaceRefresh(window, state, state.refresh.Request(GetTickCount64()));
         return true;
     };
 
@@ -258,9 +273,16 @@ int Run(HINSTANCE instance, const Options& options)
             if (stop_handle && WaitForSingleObject(stop_handle, 0) == WAIT_OBJECT_0) return EXIT_SUCCESS;
             if (message.message == WM_QUIT) { return static_cast<int>(message.wParam); }
             if (message.hwnd == window && message.message == WM_TIMER) {
+                const bool fast = message.wParam == kWorkspaceTimer;
+                if (fast) {
+                    KillTimer(window, kWorkspaceTimer);
+                    if (!state.refresh.Consume()) continue;
+                }
                 if (message.wParam == kRefreshTimer && !discovery.Refresh()) { return EXIT_FAILURE; }
-                if (message.wParam == kRefreshTimer && workspace && !workspace->Refresh(discovery.windows())) {
-                    disable();
+                if ((message.wParam == kRefreshTimer || fast) && workspace) {
+                    if (!workspace->Refresh(discovery.windows())) disable();
+                    else ArmWorkspaceRefresh(window, state, state.refresh.AfterRefresh(
+                        GetTickCount64(), workspace->native_transfer_completed()));
                 }
                 if (message.wParam == kExitTimer) { DestroyWindow(window); }
             } else if (message.hwnd == window && message.message == quickky::kTrayMenuMessage && resident) {

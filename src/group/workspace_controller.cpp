@@ -69,6 +69,7 @@ void WorkspaceController::Release(NativeWindow window)
 
 void WorkspaceController::Stop()
 {
+    native_transferred_ = false;
     for (auto& entry : entries_) entry.second.client->Cancel();
     while (!entries_.empty()) Release(entries_.begin()->first);
     inputs_.clear();
@@ -79,6 +80,7 @@ void WorkspaceController::Stop()
 
 bool WorkspaceController::Refresh(const std::map<NativeWindow, WindowCandidate>& visible)
 {
+    native_transferred_ = false;
     if (native_) return RefreshNative(visible);
     SavePlacement();
     std::vector<NativeWindow> removed;
@@ -204,7 +206,7 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
             // Native add/remove can finish after timeout; failure is not rollback.
             // Quarantine instead of inferring source state or repeating the add.
             quarantined_[item.first] = source.window().window;
-        }
+        } else native_transferred_ = true;
         // One mutation per reconciliation bounds work and lets native lifecycle
         // settle before handling another tab in a multi-tab source frame.
         break;

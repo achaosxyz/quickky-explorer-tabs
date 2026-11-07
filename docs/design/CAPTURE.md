@@ -21,6 +21,10 @@ Quickky group without losing the original window on failure.
   verify Explorer ownership, session/desktop scope, and adapter capability.
 - Ignore desktop/taskbar windows, dialogs, foreign applications, and unsupported
   integrity or virtual-desktop boundaries.
+- Explorer process/class identity is only a candidate filter. Before attachment,
+  resolve every view through the shared Explorer folder-admission policy; Control
+  Panel and related management pages are not browsing windows. Discovery remains
+  read-only and may observe such candidates without admitting them.
 - Coalesce duplicate events, revalidate identity before side effects, and never
   treat a reused HWND as an existing attachment.
 - Model discovery, attaching, managed, restoring, and released states explicitly

@@ -112,6 +112,18 @@ name for the Quickky label. `opennewwindow` with the click-time PIDL requests a
 new Explorer window; it never drives native tabs or substitutes a launch path
 for the current folder. A failed resolution or launch leaves existing views intact.
 
+Admission requires a Shell folder and rejects Control Panel category/classic/all-task
+roots, Connections, Printers, and their descendants by parsing-namespace identity.
+Namespace components with a `System.ControlPanel.Category` class registration
+are also excluded, including directly addressed applets. Localized display names
+and window titles are not policy inputs. Filesystem folders and ordinary virtual
+browsing roots such as This PC, Home, Libraries, and Recycle Bin are not excluded
+merely for lacking a filesystem path. The all-view resolver rejects an entire
+frame if any view is excluded; both pre-commit and pre-transfer scope checks reuse it.
+Native snapshot reception, target-side native add, and current-folder `+` use the
+same location policy. An excluded `+` location falls back to native default behavior.
+Keep the final source-removal GUID/PIDL check free of additional naming callouts.
+
 On Windows build 26300 with ExplorerFrame `10.0.26100.9949`, scoped native tests
 verify automatic two-window merge, a pre-existing two-tab source transferred one
 GUID at a time, current-folder native `+` and Ctrl+T, and preservation of the

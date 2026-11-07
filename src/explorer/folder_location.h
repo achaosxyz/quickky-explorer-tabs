@@ -33,6 +33,8 @@ std::optional<FolderLocation> ResolveFolder(HWND root);
 // A native frame can have several automation entries; scope checks inspect all.
 std::vector<FolderLocation> ResolveFolders(HWND root);
 OwnedPidl CloneFolderSnapshot(const void* bytes, std::size_t length);
+// Shared admission for real folders and virtual browsing roots, excluding
+// Control Panel/management namespaces regardless of localized window captions.
 std::optional<FolderLocation> DescribeFolder(OwnedPidl pidl);
 bool OpenFolderWindow(const FolderLocation& folder);
 std::optional<std::wstring> NormalizeDirectory(const std::wstring& path);

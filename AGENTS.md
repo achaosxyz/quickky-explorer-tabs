@@ -20,7 +20,9 @@ or complete native-tab replacement.
    independent Quickky browsing window. Normal duplicate launch exits harmlessly.
 2. Discover eligible Explorer windows by initial enumeration, WinEvent observation,
    and periodic reconciliation. Verify process, user, session, integrity, and
-   virtual-desktop identity. Discovery itself never mutates candidates.
+   virtual-desktop identity. Admission excludes Control Panel and related
+   management namespaces even when Explorer owns them. Discovery itself never
+   mutates candidates.
 3. Keep tabs disabled by default. Windows 10 custom groups require single-view
    windows and restore hidden members on disable/exit/controller loss. Windows 11
    uses an explicitly matched native ABI: confirm destination GUID/PIDL before
