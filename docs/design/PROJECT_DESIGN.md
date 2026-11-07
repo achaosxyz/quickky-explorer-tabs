@@ -126,8 +126,9 @@ ZIP as `vMAJOR.MINOR.PATCH`, and finally increments the development version.
 Only after successful publication does automation advance `develop` with a
 version-only commit. An atomic push keeps `main` pinned to the tested commit
 while advancing `develop`, rejecting concurrent branch changes without force.
-The next version increments SemVer MINOR and resets PATCH: `0.0.1` becomes
-`0.1.0`. No branch is force-pushed. A
+The next version increments SemVer PATCH, retaining MAJOR and MINOR: `0.0.1`
+becomes `0.0.2`. Resource-version overflow stops the release rather than carrying
+into MINOR. No branch is force-pushed. A
 diverged `main`, concurrent `develop` change, or repository protection failure
 stops finalization; existing published assets are not overwritten. A failed smoke
 test leaves `main` at the selected candidate, without a release or version bump;

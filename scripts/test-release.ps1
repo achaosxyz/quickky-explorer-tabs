@@ -110,9 +110,10 @@ try {
     Assert-Throws { Invoke-Checked $nativeShell @('-NoProfile', '-NonInteractive', '-Command', 'exit 7') } `
         'A nonzero native exit must still fail.'
     Assert-Throws { Invoke-Checked 'qtabs-test-missing-command' @() } 'A missing native command must still fail.'
-    Assert-True ((Get-NextMinorVersion '0.0.1') -ceq '0.1.0') 'Increment MINOR and reset PATCH.'
-    Assert-True ((Get-NextMinorVersion '2.9.7') -ceq '2.10.0') 'Carry a multi-digit minor version.'
-    Assert-Throws { Get-NextMinorVersion '1.65535.0' } 'Reject resource overflow.'
+    Assert-True ((Get-NextPatchVersion '0.0.1') -ceq '0.0.2') 'Increment PATCH without changing MAJOR or MINOR.'
+    Assert-True ((Get-NextPatchVersion '2.9.9') -ceq '2.9.10') 'Increment a multi-digit patch version.'
+    Assert-True ((Get-NextPatchVersion '1.65535.65534') -ceq '1.65535.65535') 'Allow the final representable PATCH.'
+    Assert-Throws { Get-NextPatchVersion '1.2.65535' } 'Reject PATCH overflow without carrying into MINOR.'
     $versionRoot = Join-Path $testRoot 'versions'
     New-Item -ItemType Directory -Path $versionRoot | Out-Null
     foreach ($invalid in @('01.2.3', '1.2', '1.2.3-rc1', '1.2.65536', 'version=1.2.3')) {
@@ -122,7 +123,7 @@ try {
     Invoke-Checked git @('init', '--quiet', '--initial-branch=develop', $versionRoot) | Out-Host
     Invoke-Checked git @('-C', $versionRoot, 'config', 'user.name', 'Release Test') | Out-Host
     Invoke-Checked git @('-C', $versionRoot, 'config', 'user.email', 'test@example.invalid') | Out-Host
-    foreach ($version in @('0.0.1', '0.1.0')) {
+    foreach ($version in @('0.0.1', '0.0.2')) {
         Write-Utf8File (Join-Path $versionRoot 'VERSION') ($version + "`n")
         Invoke-Checked git @('-C', $versionRoot, 'add', 'VERSION') | Out-Host
         Invoke-Checked git @('-C', $versionRoot, 'commit', '--quiet', '-m', "feat: version $version") | Out-Host
@@ -188,7 +189,7 @@ try {
         $main = (Invoke-Checked git @('--git-dir', $fixture.Remote, 'rev-parse', 'main')).Trim()
         $next = (Invoke-Checked git @('--git-dir', $fixture.Remote, 'show', 'develop:VERSION')).Trim()
         Assert-True ($main -ceq $fixture.Plan.sourceSha) 'main must match the tested commit.'
-        Assert-True ($next -ceq '0.1.0') 'develop must advance to the next minor version.'
+        Assert-True ($next -ceq '0.0.2') 'develop must advance to the next patch version.'
         Invoke-Checked git @('-C', $fixture.Root, 'switch', '--quiet', '--detach', $fixture.Plan.sourceSha) | Out-Host
         & $publish @publishArguments
         $global:QTabsReleaseTestState.Digest = 'sha256:not-the-tested-zip'

@@ -18,8 +18,8 @@ Publishing requires a separate, explicit `mode=release` dispatch.
 
 Before hosted build/smoke, `main` advances to the selected source commit. Only
 after successful publication does `develop` receive a version-only commit.
-"Next minor" means SemVer MINOR + 1,
-PATCH = 0: releasing `0.0.1` starts `0.1.0` development. `main`, the tag, ZIP,
+"Next version" means SemVer PATCH + 1, keeping MAJOR and MINOR unchanged:
+releasing `0.0.1` starts `0.0.2` development. `main`, the tag, ZIP,
 and release resources retain `0.0.1`.
 
 ## Prerequisites
@@ -120,7 +120,7 @@ exercise real Explorer attachment, native-tab migration, or recovery.
 4. Publication creates `vX.X.X` at the tested commit, uploads the ZIP to a draft,
    and publishes only after upload succeeds. It then confirms publication and
    atomically keeps `main` pinned to that source while updating `develop` with
-   the minor-version commit. Neither branch is force-pushed. Changes to either
+   the patch-version commit. Neither branch is force-pushed. Changes to either
    branch can stop finalization without partially updating the other branch.
 5. Verify all three results, not merely the existence of the GitHub Release:
 
@@ -132,7 +132,7 @@ exercise real Explorer attachment, native-tab migration, or recovery.
    ```
 
    The tag and `origin/main` must identify the tested source, the release must
-   contain `QTabs_vX.X.X.zip`, and `origin/develop` must contain the next minor
+   contain `QTabs_vX.X.X.zip`, and `origin/develop` must contain the next patch
    version. Do not increment the local `VERSION` a second time.
 
 GitHub-token branch pushes do not automatically trigger another push workflow.

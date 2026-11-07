@@ -32,11 +32,11 @@ function Get-ProductVersion {
     return $value
 }
 
-function Get-NextMinorVersion {
+function Get-NextPatchVersion {
     param([string]$Version)
     $parsed = [version]$Version
-    if ($parsed.Minor -ge 65535) { throw 'The next minor version exceeds the Windows resource limit.' }
-    return '{0}.{1}.0' -f $parsed.Major, ($parsed.Minor + 1)
+    if ($parsed.Build -ge 65535) { throw 'The next patch version exceeds the Windows resource limit.' }
+    return '{0}.{1}.{2}' -f $parsed.Major, $parsed.Minor, ($parsed.Build + 1)
 }
 
 function Write-Utf8File {
@@ -66,7 +66,7 @@ function Get-ReleasePlan {
         tag = "v$version"
         sourceSha = $source
         previousTag = $previous
-        nextVersion = Get-NextMinorVersion $version
+        nextVersion = Get-NextPatchVersion $version
         packageName = "QTabs_v$version.zip"
     }
 }
