@@ -1,6 +1,7 @@
 name: Windows smoke
 
 on:
+  workflow_dispatch:
   push:
     branches: [develop, main]
   pull_request:

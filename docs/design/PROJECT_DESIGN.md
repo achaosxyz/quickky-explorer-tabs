@@ -114,6 +114,12 @@ per-run image, because Explorer has a different DLL-search context. Build-tree
 runs may use the installed runtime. No runtime installer or system-level setup
 is part of extraction or startup.
 
+The Windows smoke workflow accepts pushes and pull requests for `develop` and
+`main`, plus manual dispatch for an explicitly selected ref. It checks release
+scripts and the packaged discovery-free smoke test without publishing or
+changing branches. The release workflow independently gates publication on
+those same checks.
+
 Maintainer preview presents English release notes in the conversation for
 confirmation; no standalone preview file is required. It does not build, move
 refs, or create a GitHub prerelease. Automation stages notes and a pinned plan

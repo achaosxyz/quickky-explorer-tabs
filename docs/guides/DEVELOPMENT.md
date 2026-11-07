@@ -108,10 +108,27 @@ in a separate build directory only when intentionally omitting test executables.
 For Explorer integration, follow the
 [dedicated testing procedure](EXPLORER_TESTING.md) before any live attachment.
 
+## Hosted Windows checks
+
+The `Windows smoke` workflow runs on pushes and pull requests targeting
+`develop` or `main`. It also supports manual validation of the selected branch:
+
+```powershell
+gh workflow run windows-smoke.yml --ref develop
+gh run list --workflow windows-smoke.yml --branch develop --limit 5
+gh run watch RUN_ID --exit-status
+```
+
+This checks release scripts, builds/packages x64, and runs discovery-free smoke
+checks; it never publishes a release or changes branch versions. A green check
+belongs to the run's exact source SHA, not automatically to later commits.
+GitHub-token version-bump pushes do not trigger another push workflow.
+
 ## Distribution and release
 
 Use [Release preview and publication](RELEASE.md) for the two release SOPs and
 the `scripts/` build/package commands. Development uses `develop`; release
-automation advances `main` only to tested release source and then increments
-the development MINOR version. Do not push or publish as part of routine local
+automation promotes the selected source to `main` before hosted smoke testing,
+publishes only after the checks pass, then increments the development PATCH
+version. Do not push or publish as part of routine local
 validation without explicit authorization.
