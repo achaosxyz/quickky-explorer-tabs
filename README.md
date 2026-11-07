@@ -4,8 +4,6 @@
 
 <h1 align="center">QTabs</h1>
 
-<p align="center">Your Explorer. One workspace. Your own tabs.</p>
-
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">

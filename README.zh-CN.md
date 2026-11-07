@@ -4,8 +4,6 @@
 
 <h1 align="center">QTabs</h1>
 
-<p align="center">熟悉的资源管理器，统一的工作区，自有的标签。</p>
-
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT 许可证"></a>
   <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">
