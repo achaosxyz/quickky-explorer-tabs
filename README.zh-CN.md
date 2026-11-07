@@ -8,7 +8,6 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT 许可证"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/preview-experimental-orange" alt="实验预览版"></a>
   <img src="https://img.shields.io/badge/platform-Windows_x86__64-0078D4" alt="Windows x86_64">
   <a href="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml?query=branch%3Adevelop" title="develop 分支测试状态与运行记录">
     <img src="https://github.com/achaosxyz/quickky-explorer-tabs/actions/workflows/windows-smoke.yml/badge.svg?branch=develop" alt="Windows smoke（develop）">
@@ -17,63 +16,45 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-QTabs 将新打开的文件资源管理器窗口，直接收纳为 Explorer 内的标签。继续使用熟悉的文件管理器，不增加独立浏览窗体，也不需要另一套文件操作方式。
+QTabs 将新打开的文件夹窗口收纳到同一个标签工作区，保留熟悉的 Explorer，不增加独立浏览窗体。
 
 ## 功能
 
-- Windows 11 保留原生标签栏，不额外绘制重叠标签栏。
-- Windows 10 自绘直角标签，支持最大化、最小化、还原及窗口恢复。
-- 自动将符合条件的新文件夹窗口收纳到同一标签组。
-- 排除控制面板、打印机、网络连接等系统管理页面，不将其收纳为标签。
-- 点击标签切换文件夹，点击关闭按钮关闭对应标签。
-- 点击 **+**，在活动标签的**当前目录**打开并收纳新窗口。
-- Windows 11 关闭标签功能或退出 QTabs 后，已合并标签仍由 Explorer 保留。
-- 常驻系统托盘，不显示独立的文件浏览窗体。
-- 单实例后台运行，重复启动不会新增托盘图标或后台实例。
-- 托盘菜单支持英文和简体中文，跟随 Windows 界面语言。
+- Windows 11 使用 Explorer 原生标签，Windows 10 使用直角标签。
+- 自动收纳新文件夹窗口，排除控制面板等系统管理页面。
+- 点击标签切换文件夹，通过关闭按钮关闭标签。
+- 点击 **+**，在活动标签的**当前目录**打开新标签。
+- Windows 10 支持最大化、最小化和还原。
+- 常驻系统托盘，单实例后台运行。
 
 ## 开始使用
 
-完整解压 `QTabs_vX.X.X.zip`，所需的 Visual C++ 运行库 DLL 已包含在压缩包中，无需另行安装。将所有解压出的 DLL 与 `QTabs.exe` 保持在一起，正常启动 EXE 即可，不请求管理员权限。标签功能默认关闭；此前主动启用过的设置会被保留。启动后可在系统托盘中找到 QTabs 图标；如果图标被隐藏，请展开托盘折叠区域。
+1. 从 [Releases](https://github.com/achaosxyz/quickky-explorer-tabs/releases/latest) 下载 `QTabs_vX.X.X.zip`。
+2. 完整解压，运行 `QTabs.exe`。
+3. 右键点击 QTabs 托盘图标，勾选 **启用Tabs**。
+
+压缩包已包含 Visual C++ 运行库，无需另行安装，也无需管理员权限。请将解压后的文件保持在一起。
 
 ### 托盘菜单
 
 右键点击托盘图标：
 
-- **开机自启动**：设置或取消当前 Windows 账户的登录自启动。
-- **启用Tabs**：收纳符合条件的窗口；取消勾选时停止接管。
-- **关于**：查看作者、版本、构建时间和可点击的完整 GitHub 网址。
-- **退出**：移除 QTabs 接管并退出托盘程序。
-
-勾选状态分别反映实际的自启动注册状态和标签启用状态。自启动仅作用于当前账户；QTabs 不安装系统服务，也不修改 Explorer 的全局设置。
-
-### 隔离试用
-
-先创建专用目录，再运行 `QTabs.exe --capture-test-root "C:\QuickkyTabs"`。此模式仅收纳该目录内的文件夹窗口，不保存标签开关设置。在该目录下打开文件夹后，可点击标签切换，或点击 **+** 在活动标签的当前目录再打开一个视图。关闭标签功能或退出程序后，恢复普通 Explorer 行为；Windows 11 已合并的标签不会拆回独立窗口。请勿用预览版管理重要或无关的窗口。
+- **开机自启动**：登录 Windows 时启动 QTabs。
+- **启用Tabs**：开启或关闭窗口自动收纳。
+- **关于**：查看作者、版本和构建信息。
+- **退出**：退出 QTabs。
 
 ## 兼容性与限制
 
-| 项目 | 当前预览版 |
-| --- | --- |
-| 架构 | x86_64 |
-| Windows 11 | 已在构建 26300 验证原生合并、当前目录 + / Ctrl+T、退出保留标签 |
-| Windows 10 | 已在构建 19045 验证接管、当前目录 +、最大化/还原及故障恢复 |
-| 已有原生多标签窗口 | 符合条件的源窗口逐个合并标签，不关闭无关标签 |
-| 原生工作区容量 | 最多 128 个标签，额外窗口保持独立 |
-| Windows 10 工作区容量 | 最多 32 个标签，额外窗口保持独立 |
-| 迁移状态 | 遵循原生拖放行为，选择状态和导航历史可能重置 |
-| 无障碍、主题、多显示器及模态窗口 | 尚未完整验证 |
-
-项目面向 x86_64 平台的 Windows 10/11，不接管桌面、任务栏、打开/保存对话框或其他虚拟桌面的窗口。
-当前原生接管仅支持已验证的 Explorer 组件版本 `10.0.26100.9949`；Windows 更新后可能暂不接管，待重新验证兼容性。不支持的经典标题栏布局保留独立窗口，不覆盖 Explorer 文件区域。结果不确定时不自动反复迁移。超时不代表操作已撤销，已启动的原生操作仍可能完成。无需管理员权限。
-
-收纳不是瞬时完成：需要等待 Explorer 的文件夹视图就绪，Explorer 繁忙时仍可能有延迟，并短暂显示独立窗口。
+- 适用于 Windows x86_64，已在 Windows 10 构建 19045 和 Windows 11 构建 26300 验证；兼容性取决于 Windows 和 Explorer 版本。
+- Windows 11 原生收纳当前需要 Explorer 组件版本 `10.0.26100.9949`。不支持的窗口保持独立，Windows 更新后也可能暂不收纳。
+- Windows 11 最多 128 个标签，Windows 10 最多 32 个；超出容量的窗口保持独立。
+- 新窗口可能在收纳前短暂显示；原生合并可能重置文件选择和导航历史。
+- 关闭标签功能或退出 QTabs 后，Windows 10 恢复独立窗口，Windows 11 原生标签仍保留在 Explorer 中。
 
 ## 问题反馈
 
-发现问题或有功能建议？欢迎[提交 Issue](https://github.com/achaosxyz/quickky-explorer-tabs/issues)。请附上“关于”中的版本和构建时间、Windows 版本、复现步骤以及期望行为。分享截图或诊断信息前，请遮蔽个人文件名和路径。
-
-欢迎反馈缺陷、提出功能想法或修正翻译。涉及 Explorer 行为的大幅修改，请先讨论方案。
+欢迎[提交 Issue](https://github.com/achaosxyz/quickky-explorer-tabs/issues)，请附上 QTabs 版本、Windows 版本和复现步骤。分享截图或日志前，请遮蔽个人文件名和路径。
 
 ## 作者
 
