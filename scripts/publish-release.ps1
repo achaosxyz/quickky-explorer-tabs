@@ -2,11 +2,12 @@
 param(
     [string]$ArtifactDirectory = 'build/release',
     [Parameter(Mandatory = $true)][string]$SourceSha,
-    [Parameter(Mandatory = $true)][string]$Repository
+    [Parameter(Mandatory = $true)][string]$Repository,
+    [switch]$PromoteMain
 )
 . "$PSScriptRoot/common.ps1"
 
-# Publishing is intentionally restricted to an explicit, same-repository dispatch.
+# Promotion/publication require an explicit, same-repository dispatch.
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -or
     $env:GITHUB_REF -ne 'refs/heads/develop' -or $Repository -cne $env:GITHUB_REPOSITORY) {
     throw 'Publication must run through the develop release workflow in the target repository.'
@@ -21,6 +22,16 @@ try {
     if ($SourceSha -cne $expected.sourceSha -or $SourceSha -cne $env:GITHUB_SHA) {
         throw 'The checkout must match the exact dispatched source commit.'
     }
+    Invoke-Checked git @('fetch', 'origin', 'main', 'develop', '--tags') | Out-Host
+    $main = (Invoke-Checked git @('rev-parse', 'origin/main')).Trim()
+    $develop = (Invoke-Checked git @('rev-parse', 'origin/develop')).Trim()
+    if ($PromoteMain) {
+        if ($develop -cne $SourceSha) { throw 'develop changed before main promotion.' }
+        Invoke-Checked git @('merge-base', '--is-ancestor', $main, $SourceSha) | Out-Host
+        Invoke-Checked git @('push', 'origin', "${SourceSha}:refs/heads/main") | Out-Host
+        Write-Host 'main now selects the pinned candidate; smoke testing must pass before publication.'
+        return
+    }
     $artifacts = [IO.Path]::GetFullPath($ArtifactDirectory)
     $plan = Get-Content -LiteralPath (Join-Path $artifacts 'release-plan.json') -Raw | ConvertFrom-Json
     foreach ($key in $expected.Keys) {
@@ -32,11 +43,7 @@ try {
     if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw 'The tested ZIP is missing.' }
     $notes = [IO.File]::ReadAllText($notesPath).Trim()
 
-    Invoke-Checked git @('fetch', 'origin', 'main', 'develop', '--tags') | Out-Host
-    $main = (Invoke-Checked git @('rev-parse', 'origin/main')).Trim()
-    $develop = (Invoke-Checked git @('rev-parse', 'origin/develop')).Trim()
-    # Requiring an ancestor makes main exactly the tested source tree, not an untested merge.
-    Invoke-Checked git @('merge-base', '--is-ancestor', $main, $SourceSha) | Out-Host
+    if ($main -cne $SourceSha) { throw 'main must already match the smoke-tested source.' }
     $finalized = $false
     if ($develop -cne $SourceSha) {
         $parent = (Invoke-Checked git @('show', '-s', '--format=%P', $develop)).Trim()
@@ -79,7 +86,7 @@ try {
         return
     }
 
-    # Prepare the version-only successor locally. No branch is advanced before publication.
+    # Prepare the successor locally; develop is not advanced before publication.
     Invoke-Checked git @('switch', '--detach', $SourceSha) | Out-Host
     Write-Utf8File (Join-Path $root 'VERSION') ($plan.nextVersion + "`n")
     Invoke-Checked git @('add', '--', 'VERSION') | Out-Host

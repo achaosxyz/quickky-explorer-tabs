@@ -101,8 +101,9 @@ and About dialog use this metadata. About displays author aCHAOS, contact
 
 ### Build, package, and release contract
 
-Development uses `develop`; `main` records released source. The CMake project and
-application target are `QTabs`, with output filename `QTabs.exe`. Its hook
+Development uses `develop`; `main` receives the selected release candidate before
+hosted smoke testing. Release tags identify published source. The CMake project
+and application target are `QTabs`, with output filename `QTabs.exe`. Its hook
 DLL stays `QuickkyExplorerHook.dll`. PowerShell scripts in `scripts/` configure an
 x64 Release build, run the discovery-free `app.smoke` check, and package the EXE,
 DLL, version, license, and user documentation as `QTabs_vMAJOR.MINOR.PATCH.zip`.
@@ -113,20 +114,25 @@ per-run image, because Explorer has a different DLL-search context. Build-tree
 runs may use the installed runtime. No runtime installer or system-level setup
 is part of extraction or startup.
 
-Release preview is read-only with respect to GitHub and Git refs: it generates
-English commit-based release notes and a plan pinned to the selected commit.
-The manually dispatched release workflow accepts only `develop`, builds and
-smoke-tests that exact commit on a Windows runner, then publishes the ZIP to a
-GitHub Release tagged `vMAJOR.MINOR.PATCH`. Preview and publication are separate
-modes; preview does not create a GitHub prerelease.
+Maintainer preview presents English release notes in the conversation for
+confirmation; no standalone preview file is required. It does not build, move
+refs, or create a GitHub prerelease. Automation stages notes and a pinned plan
+as intermediate artifacts. The dispatch can supply the approved English body
+through `release_notes`; otherwise it uses commit-based notes. The formal
+workflow accepts only `develop`, first fast-forwards `main`
+to that exact commit, then builds/smoke-tests it on Windows, publishes the tested
+ZIP as `vMAJOR.MINOR.PATCH`, and finally increments the development version.
 
-Only after successful publication does automation atomically fast-forward
-`main` to the tested commit and advance `develop` with a version-only commit.
+Only after successful publication does automation advance `develop` with a
+version-only commit. An atomic push keeps `main` pinned to the tested commit
+while advancing `develop`, rejecting concurrent branch changes without force.
 The next version increments SemVer MINOR and resets PATCH: `0.0.1` becomes
-`0.1.0`. Both branch updates must succeed together, without force pushes. A
+`0.1.0`. No branch is force-pushed. A
 diverged `main`, concurrent `develop` change, or repository protection failure
-stops finalization; existing published assets are not overwritten. The release
-SOP documents inspection and recovery of partial publication. These checks do
+stops finalization; existing published assets are not overwritten. A failed smoke
+test leaves `main` at the selected candidate, without a release or version bump;
+automation never rewinds it. The release SOP documents inspection and recovery
+of partial publication. These checks do
 not establish Explorer compatibility or satisfy native-integration gates.
 
 ### Scoped integration experiment

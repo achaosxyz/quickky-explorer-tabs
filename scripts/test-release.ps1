@@ -155,13 +155,20 @@ try {
         $env:GITHUB_SHA = $fixture.Plan.sourceSha
         $publish = Join-Path $fixture.Root 'scripts/publish-release.ps1'
         $publishArguments = @{ ArtifactDirectory = $fixture.Artifacts; SourceSha = $env:GITHUB_SHA; Repository = 'fixture/fixture' }
+        Assert-Throws { & $publish @publishArguments } 'Publication requires main promotion before smoke and release.'
+        Assert-True (-not $global:QTabsReleaseTestState.Release) 'No GitHub release is created before main promotion.'
+        & $publish @publishArguments -PromoteMain
+        $promotedMain = (Invoke-Checked git @('--git-dir', $fixture.Remote, 'rev-parse', 'main')).Trim()
+        Assert-True ($promotedMain -ceq $fixture.Plan.sourceSha) 'Promote the exact develop source before hosted smoke.'
+        Assert-True (-not $global:QTabsReleaseTestState.Release) 'Promotion alone does not publish a release.'
+        Assert-True ((Get-ProductVersion $fixture.Root) -ceq '0.0.1') 'Promotion alone does not bump the version.'
         $originalMain = (Invoke-Checked git @('--git-dir', $fixture.Remote, 'rev-parse', 'main')).Trim()
         if ($scenario -ceq 'success') {
             & $publish @publishArguments
         } else {
             Assert-Throws { & $publish @publishArguments } 'The failing scenario must stop publication/finalization.'
             $main = (Invoke-Checked git @('--git-dir', $fixture.Remote, 'rev-parse', 'main')).Trim()
-            Assert-True ($main -ceq $originalMain) 'Failure must not partially advance main.'
+            Assert-True ($main -ceq $originalMain) 'Publication failure must preserve the already promoted main.'
         }
         Invoke-Checked git @('-C', $fixture.Root, 'switch', '--quiet', '--detach', $fixture.Plan.sourceSha) | Out-Host
         if ($scenario -ceq 'failed-publication') {

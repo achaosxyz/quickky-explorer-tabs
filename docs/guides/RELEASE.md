@@ -9,13 +9,16 @@ The ZIP includes the matching MSVC redistributable DLLs selected by CMake's
 `InstallRequiredSystemLibraries`. Extract the complete archive; verify smoke
 and scoped Explorer loading on an OS without a globally installed VC++ runtime.
 
-There are two procedures below. **Preview** generates release notes and a tested
-candidate without changing remote refs or publishing a GitHub prerelease.
-**Release** publishes that source revision and its ZIP through GitHub Actions.
+There are two procedures below. **Preview** presents release notes in the
+conversation for maintainer confirmation; no standalone file is required.
+It does not build, change refs, or create a GitHub prerelease.
+**Release** promotes `develop` to `main`, runs Windows smoke checks,
+publishes the tested ZIP through GitHub Actions, and then increments `develop`.
 Publishing requires a separate, explicit `mode=release` dispatch.
 
-After publication, `main` advances to the exact tested source commit and
-`develop` receives a version-only commit. "Next minor" means SemVer MINOR + 1,
+Before hosted build/smoke, `main` advances to the selected source commit. Only
+after successful publication does `develop` receive a version-only commit.
+"Next minor" means SemVer MINOR + 1,
 PATCH = 0: releasing `0.0.1` starts `0.1.0` development. `main`, the tag, ZIP,
 and release resources retain `0.0.1`.
 
@@ -55,7 +58,13 @@ exercise real Explorer attachment, native-tab migration, or recovery.
    Get-Content VERSION
    ```
 
-2. Generate the English release record locally:
+2. Present the proposed English release notes in the conversation and obtain
+   maintainer confirmation. Include the version, features, download filename,
+   and known limitations. Do not publish or create a preview file for this step.
+   Pass the approved body as the `release_notes` dispatch input when publishing.
+
+   For optional inspection of commit-based notes and the pinned source plan,
+   the internal automation helper writes ignored intermediate artifacts:
 
    ```powershell
    ./scripts/preview-release.ps1
@@ -68,33 +77,21 @@ exercise real Explorer attachment, native-tab migration, or recovery.
    source SHA, release version/tag, ZIP name, and next development version. Local
    preview warns about uncommitted changes; it does not include them in the notes.
 
-3. Check scripts and optionally build the local candidate:
-
-   ```powershell
-   ./scripts/test-release.ps1
-   ./scripts/build.ps1 -Generator 'Visual Studio 15 2017' -Toolset v141 -WindowsSdk 10.0.17763.0
-   ```
-
-   The local generator/SDK flags describe this workstation. Other installations
-   may omit them or select their installed Visual Studio generator. The script
-   builds x64 Release, runs `app.smoke`, writes `build/release/QTabs_vX.X.X.zip`,
-   extracts it, and runs `QTabs.exe --smoke-test` again with a ten-second timeout.
-   It never enables tabs or attaches to Explorer. `-BuildDirectory` and
-   `-OutputDirectory` can select other local output paths.
-
-4. After the intended changes are committed and pushed, obtain the hosted preview:
+3. Optionally, after the intended changes are committed and explicitly pushed,
+   obtain the hosted notes-only preview:
 
    ```powershell
    gh workflow run release.yml --ref develop -f mode=preview
    gh run list --workflow release.yml --limit 5
    gh run view RUN_ID
-   gh run download RUN_ID --name release-candidate --dir build/hosted-preview
+   gh run download RUN_ID --name release-preview --dir build/hosted-preview
    ```
 
    Replace `RUN_ID` with the selected run. Review its summary, notes, source SHA,
-   version and ZIP. The workflow uses the selected commit, not a later moving
-   `develop` tip. Preview does not reserve a tag, merge branches, bump `VERSION`,
-   or create a public/draft release.
+   and version. The workflow uses the selected commit, not a later moving
+   `develop` tip. Preview does not compile, reserve a tag, merge branches, bump
+   `VERSION`, or create a public/draft release. Local packaging is a separate
+   development operation, not part of preview.
 
 ## SOP 2: Release
 
@@ -109,15 +106,22 @@ exercise real Explorer attachment, native-tab migration, or recovery.
    gh run watch RUN_ID --exit-status
    ```
 
-3. The read-only preparation job checks scripts, generates notes, compiles the
-   application, runs CTest `app.smoke` and the extracted-package smoke, then
-   uploads the candidate artifact. The write-enabled job consumes that same
+   Include `-f release_notes="$approvedNotes"` on the dispatch when notes were
+   confirmed in the conversation. Supply their text directly, not an additional
+   file. Without this input, automation generates commit-based notes. The tested
+   artifact carries the selected body through publication and retry checks.
+
+3. The promotion job first verifies the exact `develop` SHA and fast-forwards
+   `main` to it without a force push. Only after that succeeds does the read-only
+   preparation job check scripts, generate notes, compile the application, run
+   CTest `app.smoke` and the extracted-package smoke, and upload the candidate
+   artifact. The write-enabled job consumes that same
    artifact and checks the exact source SHA/version and current branch state.
 4. Publication creates `vX.X.X` at the tested commit, uploads the ZIP to a draft,
    and publishes only after upload succeeds. It then confirms publication and
-   atomically fast-forwards `main` and updates `develop` with the minor-version
-   commit. Neither branch is force-pushed. Changes to either branch can stop
-   finalization without partially updating the other branch.
+   atomically keeps `main` pinned to that source while updating `develop` with
+   the minor-version commit. Neither branch is force-pushed. Changes to either
+   branch can stop finalization without partially updating the other branch.
 5. Verify all three results, not merely the existence of the GitHub Release:
 
    ```powershell
@@ -137,8 +141,10 @@ there is no reliance on a subsequent `main` push run or recursive release trigge
 
 ## Failure inspection and recovery
 
-- **Build/smoke failure:** no tag, release, or branch update is made. Fix the
-  source on `develop`, review it, and generate a new preview.
+- **Promotion failure:** no build, tag, release, or version bump is performed.
+- **Build/smoke failure:** no tag, release, or version bump is made. `main` stays
+  at the selected candidate; automation never rewinds it. Fix the source on
+  `develop`, review it, generate a new preview, and promote the corrected candidate.
 - **Draft/upload failure:** inspect the existing draft and its assets. Automation
   will not overwrite or automatically publish an existing draft. A maintainer
   must reconcile it against the tested artifact before taking further action.

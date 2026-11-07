@@ -9,6 +9,10 @@ on:
         default: preview
         type: choice
         options: [preview, release]
+      release_notes:
+        description: Approved English release notes (optional; defaults to commit-based notes)
+        required: false
+        type: string
 
 # Never cancel a publication halfway through its external side effects.
 concurrency:
@@ -19,7 +23,24 @@ permissions:
   contents: read
 
 jobs:
+  promote:
+    if: inputs.mode == 'release'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Fast-forward main to the selected develop commit
+        shell: pwsh
+        run: ./scripts/publish-release.ps1 -PromoteMain -SourceSha $env:GITHUB_SHA -Repository $env:GITHUB_REPOSITORY
+
   prepare:
+    needs: promote
+    if: ${{ !cancelled() && (inputs.mode == 'preview' || needs.promote.result == 'success') }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -35,21 +56,40 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Check release scripts
+        if: inputs.mode == 'release'
         shell: pwsh
         run: ./scripts/test-release.ps1
       - name: Preview release notes
         shell: pwsh
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           ./scripts/preview-release.ps1
+          if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_NOTES)) {
+            [IO.File]::WriteAllText((Join-Path $PWD 'build/release/RELEASE_NOTES.md'),
+              $env:RELEASE_NOTES.Trim() + "`n", [Text.UTF8Encoding]::new($false))
+          }
           Get-Content build/release/RELEASE_NOTES.md -Raw >> $env:GITHUB_STEP_SUMMARY
       - name: Build, smoke-test, and package x64
+        if: inputs.mode == 'release'
         shell: pwsh
         run: ./scripts/build.ps1 -Generator 'Visual Studio 17 2022'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: inputs.mode == 'release'
         with:
           name: release-candidate
           path: |
             build/release/QTabs_v*.zip
+            build/release/release-plan.json
+            build/release/RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload release-notes preview only
+        if: inputs.mode == 'preview'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-preview
+          path: |
             build/release/release-plan.json
             build/release/RELEASE_NOTES.md
           if-no-files-found: error
