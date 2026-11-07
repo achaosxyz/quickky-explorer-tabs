@@ -120,6 +120,14 @@ and window titles are not policy inputs. Filesystem folders and ordinary virtual
 browsing roots such as This PC, Home, Libraries, and Recycle Bin are not excluded
 merely for lacking a filesystem path. The all-view resolver rejects an entire
 frame if any view is excluded; both pre-commit and pre-transfer scope checks reuse it.
+Checks for multiple roots share one automation enumeration within a validation
+phase, rejecting roots with an unreadable view. Fresh checks after preparation
+and immediately before native mutation are not replaced with earlier snapshots.
+Unresolved high-risk limitation: these synchronous Shell COM/name calls have no
+hard deadline. A blocked call can stall the controller STA; bounded bridge IPC
+does not bound Shell automation. A live but blocked controller does not signal
+process/lease loss, so the existing watchdog alone cannot restore hidden members
+merely because the STA is unresponsive.
 Native snapshot reception, target-side native add, and current-folder `+` use the
 same location policy. An excluded `+` location falls back to native default behavior.
 Keep the final source-removal GUID/PIDL check free of additional naming callouts.

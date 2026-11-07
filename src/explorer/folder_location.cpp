@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdint>
 #include <utility>
+#include <set>
 #include <vector>
 
 namespace quickky {
@@ -112,9 +113,12 @@ OwnedPidl CloneFolderSnapshot(const void* bytes, std::size_t length)
     return {};
 }
 
-std::vector<FolderLocation> ResolveFolders(HWND root)
+FolderLocations ResolveFolderLocations(const std::vector<HWND>& roots)
 {
-    std::vector<FolderLocation> result;
+    FolderLocations result;
+    for (const auto root : roots) result.emplace(root, std::vector<FolderLocation>{});
+    if (result.empty()) return result;
+    std::set<HWND> rejected;
     ComPtr<IShellWindows> windows;
     if (FAILED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER,
                                IID_PPV_ARGS(&windows)))) return result;
@@ -128,13 +132,21 @@ std::vector<FolderLocation> ResolveFolders(HWND root)
         ComPtr<IWebBrowserApp> browser;
         SHANDLE_PTR handle = 0;
         if (FAILED(windows->Item(item, &dispatch)) || !dispatch ||
-            FAILED(dispatch.As(&browser)) || FAILED(browser->get_HWND(&handle)) ||
-            reinterpret_cast<HWND>(handle) != root) continue;
+            FAILED(dispatch.As(&browser)) || FAILED(browser->get_HWND(&handle))) continue;
+        const auto root = reinterpret_cast<HWND>(handle);
+        const auto found = result.find(root);
+        if (found == result.end() || rejected.count(root)) continue;
         auto folder = ReadFolder(browser.Get());
-        if (folder) result.push_back(std::move(*folder));
-        else return {};
+        if (folder) found->second.push_back(std::move(*folder));
+        else { found->second.clear(); rejected.insert(root); }
     }
     return result;
+}
+
+std::vector<FolderLocation> ResolveFolders(HWND root)
+{
+    auto locations = ResolveFolderLocations({root});
+    return std::move(locations.at(root));
 }
 
 std::optional<FolderLocation> ResolveFolder(HWND root)

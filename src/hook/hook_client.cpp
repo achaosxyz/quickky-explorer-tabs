@@ -47,10 +47,10 @@ bool HookLibrary::Load()
         if (GetFileAttributesW(from.c_str()) == INVALID_FILE_ATTRIBUTES &&
             GetLastError() == ERROR_FILE_NOT_FOUND) continue; // Installed-runtime developer build.
         const auto to = directory_ + L"\\" + name;
-        if (!CopyFileW(from.c_str(), to.c_str(), TRUE)) { ClearFiles(); return false; }
         runtime_files_.push_back(to);
+        if (!copy_file_(from.c_str(), to.c_str(), TRUE)) { ClearFiles(); return false; }
     }
-    if (CopyFileW(source.c_str(), filename_.c_str(), TRUE)) {
+    if (copy_file_(source.c_str(), filename_.c_str(), TRUE)) {
         module_ = LoadLibraryExW(filename_.c_str(), nullptr,
             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     }

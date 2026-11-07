@@ -26,16 +26,19 @@ public:
     bool Create(HWND parent, Input input, std::weak_ptr<void> lifetime, bool classic_caption = false);
     bool Configure(const GuardRequest& request);
     bool Resize();
-    void Hide();
+    void Hide(bool release_resources = false);
+    void RefreshTheme();
     bool alive() const noexcept { return window_ != nullptr; }
 
 private:
+    friend struct TabStripTestAccess;
     struct Hit { TabInput action; std::uint64_t tab; };
     static LRESULT CALLBACK Procedure(HWND, UINT, WPARAM, LPARAM);
     LRESULT Handle(UINT, WPARAM, LPARAM);
     bool Resources();
     void Paint();
     void Layout();
+    bool UpdateHover(int x, int y);
     Hit HitTest(int x, int y) const;
 
     HWND window_ = nullptr;
@@ -58,6 +61,11 @@ private:
     int hover_y_ = -1;
     bool classic_caption_ = false;
     bool resizing_ = false;
+    bool tracking_mouse_ = false;
+    bool light_ = true;
+    bool high_contrast_ = false;
+    D2D1_COLOR_F background_{};
+    D2D1_COLOR_F foreground_{};
 };
 
 } // namespace quickky

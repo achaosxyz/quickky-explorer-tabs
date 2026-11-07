@@ -12,6 +12,9 @@ namespace quickky {
 class HookLibrary {
 public:
     HookLibrary() = default;
+    using CopyFileFunction = BOOL (WINAPI*)(LPCWSTR, LPCWSTR, BOOL);
+    explicit HookLibrary(CopyFileFunction copy_file) noexcept
+        : copy_file_(copy_file ? copy_file : &CopyFileW) {}
     HookLibrary(const HookLibrary&) = delete;
     HookLibrary& operator=(const HookLibrary&) = delete;
     ~HookLibrary();
@@ -23,6 +26,7 @@ private:
     std::wstring directory_;
     std::wstring filename_;
     std::vector<std::wstring> runtime_files_;
+    CopyFileFunction copy_file_ = &CopyFileW;
 };
 
 // Controller-thread owner of one nonce-bound attachment and cancellation lease.

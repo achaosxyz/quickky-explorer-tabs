@@ -6,10 +6,46 @@
 #include "explorer/folder_location.h"
 
 #include <deque>
+#include <cwchar>
 #include <map>
 #include <memory>
 
 namespace quickky {
+
+// Acknowledged custom publication state, scoped to one attachment lifetime.
+class WorkspacePublicationState {
+public:
+    bool NeedsConfigure(const GuardRequest& view) const
+    {
+        if (!configured_ || view.count != view_.count || view.active != view_.active) return true;
+        for (unsigned i = 0; i < view.count; ++i) {
+            if (view.tabs[i].id != view_.tabs[i].id ||
+                std::wcscmp(view.tabs[i].title, view_.tabs[i].title) != 0) return true;
+        }
+        return false;
+    }
+    void Configured(const GuardRequest& view) { view_ = view; configured_ = true; }
+    bool NeedsPresent(const WINDOWPLACEMENT& placement, bool visible, bool actual_visible) const
+    {
+        if (!presented_ || visible_ != visible || visible != actual_visible) return true;
+        // Hidden members receive the current placement when selected, not on every move.
+        return visible && (placement.flags != placement_.flags || placement.showCmd != placement_.showCmd ||
+            placement.ptMinPosition.x != placement_.ptMinPosition.x ||
+            placement.ptMinPosition.y != placement_.ptMinPosition.y ||
+            placement.ptMaxPosition.x != placement_.ptMaxPosition.x ||
+            placement.ptMaxPosition.y != placement_.ptMaxPosition.y ||
+            !EqualRect(&placement.rcNormalPosition, &placement_.rcNormalPosition));
+    }
+    void Presented(const WINDOWPLACEMENT& placement, bool visible)
+    { placement_ = placement; visible_ = visible; presented_ = true; }
+
+private:
+    GuardRequest view_;
+    WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
+    bool configured_ = false;
+    bool presented_ = false;
+    bool visible_ = false;
+};
 
 // Controller-STA policy owner: admits acknowledged roots and publishes one view.
 // Input is queued during synchronous IPC, then processed after the call unwinds.
@@ -28,13 +64,24 @@ public:
     void Stop();
 
 private:
-    struct Entry { std::unique_ptr<HookClient> client; std::wstring label; };
+    friend struct WorkspaceControllerTestAccess;
+    struct Entry {
+        std::unique_ptr<HookClient> client;
+        std::wstring label;
+        WorkspacePublicationState publication;
+    };
     struct Input { WindowIdentity source; TabInput action; TabId tab; OwnedPidl folder; };
     bool Publish();
     bool RefreshNative(const std::map<NativeWindow, WindowCandidate>& visible);
+    std::vector<HWND> FolderRoots(const std::map<NativeWindow, WindowCandidate>& visible) const;
+    std::map<NativeWindow, WindowIdentity> SnapshotAttachments() const;
+    void ReconcileEntries(const FolderLocations& locations,
+        const std::map<NativeWindow, WindowIdentity>& attachments);
     bool InNativeScope(HWND target) const;
+    bool InNativeScope(HWND target, const FolderLocations& locations) const;
     void SavePlacement();
     void Release(NativeWindow window);
+    void ReleaseIfCurrent(NativeWindow window, const WindowIdentity& identity);
     const Tab* FindTab(TabId id) const;
 
     HWND sender_;

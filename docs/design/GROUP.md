@@ -73,6 +73,23 @@ acknowledge, controller membership is retired and restoration is delegated to th
 already-signaled target watchdog; it is not reported as confirmed restoration.
 This terminal handoff differs from a retryable pure-model restore transaction.
 
+Each custom attachment remembers only acknowledged publication state. Compare
+tab IDs, bounded labels, and selection before Configure; compare desired visibility
+and placement before Present, also correcting externally changed visibility.
+Hidden members need no placement update until shown. A new attachment has no
+publication state, and Stop discards it. Health and folder checks are not skipped.
+Folder enumeration is shared within each read-only validation phase. Initial
+batches never authorize Commit or native mutation: those boundaries require
+fresh checks after Prepare or immediately before transfer.
+Automation may pump messages, so the batch is also bound to pre-call attachment
+identities. Reconciliation skips attachments absent from that identity snapshot,
+missing from the folder results, or replaced with another generation. It does
+not confuse missing coverage with a covered empty/invalid result. A deferred
+removal rechecks the nominated identity before releasing a current entry; normal
+later reconciliation supplies fresh coverage. This is not a general nested
+Refresh/input-dispatch architecture: the application still queues input until
+synchronous work unwinds.
+
 No session persistence, tab drag-out, multi-group mode, or path-based state
 reconstruction is included in the scaffold. Do not turn window grouping into a
 general-purpose application container. Presentation belongs to [Chrome](CHROME.md).

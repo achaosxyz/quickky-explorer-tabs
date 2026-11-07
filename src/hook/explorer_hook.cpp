@@ -147,11 +147,15 @@ LRESULT CALLBACK Keyboard(int code, WPARAM wparam, LPARAM lparam)
 {
     try {
     if (code >= 0 && wparam == PM_REMOVE && attachment && attachment->lease &&
-        attachment->committed && ControllerAvailable()) {
+        attachment->committed) {
         auto message = reinterpret_cast<MSG*>(lparam);
         if (message && message->message == WM_KEYDOWN &&
+            (message->wParam == 'T' || (attachment->identity.workspace != 2 &&
+             (message->wParam == 'W' || message->wParam == VK_TAB))) &&
             GetAncestor(message->hwnd, GA_ROOT) == attachment->target &&
-            (GetKeyState(VK_CONTROL) & 0x8000)) {
+            (GetKeyState(VK_CONTROL) & 0x8000) &&
+            !(message->wParam == 'T' && (GetKeyState(VK_SHIFT) & 0x8000)) &&
+            ControllerAvailable()) {
             bool handled = true;
             if (attachment->identity.workspace == 2) {
                 handled = false;
@@ -337,7 +341,7 @@ LRESULT HandleRootMessage(HWND window, UINT message, WPARAM wparam, LPARAM lpara
                 const auto current = attachment;
                 current->changed = true;
                 if (!request.visible) {
-                    current->strip.Hide();
+                    current->strip.Hide(true);
                     ShowWindow(window, SW_HIDE);
                     return !IsWindowVisible(window);
                 }
@@ -358,6 +362,11 @@ LRESULT HandleRootMessage(HWND window, UINT message, WPARAM wparam, LPARAM lpara
     const auto result = DefSubclassProc(window, message, wparam, lparam);
     if (attachment && attachment->target == window && attachment->committed &&
         attachment->identity.workspace != 2 &&
+        (message == WM_THEMECHANGED || message == WM_SETTINGCHANGE || message == WM_SYSCOLORCHANGE)) {
+        attachment->strip.RefreshTheme();
+    }
+    if (attachment && attachment->target == window && attachment->committed &&
+        attachment->identity.workspace != 2 &&
         (message == WM_SIZE || message == WM_DPICHANGED ||
          (attachment->identity.workspace == 1 && (message == WM_WINDOWPOSCHANGED ||
             message == WM_SHOWWINDOW || message == WM_STYLECHANGED || message == WM_DISPLAYCHANGE || message == WM_ENABLE)))) {
@@ -368,7 +377,7 @@ LRESULT HandleRootMessage(HWND window, UINT message, WPARAM wparam, LPARAM lpara
         const auto current = attachment;
         if (hiding || (message == WM_ENABLE && !wparam)) {
             current->layout_pending = false;
-            current->strip.Hide();
+            current->strip.Hide(true);
         } else if (current->identity.workspace == 1) {
             // WM_WINDOWPOSCHANGED can be nested inside Explorer's placement
             // stack, before its caption hit-test coordinates have caught up.

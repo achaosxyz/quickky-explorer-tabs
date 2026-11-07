@@ -27,6 +27,13 @@ Quickky group without losing the original window on failure.
   read-only and may observe such candidates without admitting them.
 - Coalesce duplicate events, revalidate identity before side effects, and never
   treat a reused HWND as an existing attachment.
+  Relevant event bursts arm one short owning-thread timer; unrelated foreground
+  windows do not enumerate. Known destruction emits removal immediately, then
+  queues reconciliation. Stop cancels the timer; explicit Refresh consumes pending
+  work. Discovery remains active in read-only modes and while tabs are disabled.
+  The coalescing boundary is the pending timer, not the producer's notification
+  loop or an elapsed-time window: later-delivered events can arm a new pass after
+  consumption. Global WinEvent delivery may include other processes.
 - Model discovery, attaching, managed, restoring, and released states explicitly
   when code is introduced. Only confirmed attachment can become managed.
 - Preserve the original window on rejection, timeout, or failed attachment.

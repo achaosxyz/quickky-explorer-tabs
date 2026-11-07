@@ -1,6 +1,6 @@
 # Tests
 
-CTest registers seven checks when `BUILD_TESTING` is enabled (the default).
+CTest registers nine checks when `BUILD_TESTING` is enabled (the default).
 All checks retain explicit failure handling in Release builds; no third-party
 test framework is required. Timeouts are ten seconds, except the fifteen-second
 workspace bridge check and twenty-second instance check.
@@ -14,6 +14,14 @@ workspace bridge check and twenty-second instance check.
   stop/restart, callback exceptions, production-probe rejection, and unready-window
   retry notifications. A hidden fixture becomes eligible after its sole creation
   event; a deferred re-probe, not a new lifecycle event, discovers it.
+  A separate hook-free phase feeds the actual event and timer callbacks directly:
+  64 events share one pending timer/scan; events delivered after consumption may
+  start another pass. It also checks unrelated foreground events, explicit refresh,
+  late canceled callbacks, immediate destruction invalidation, and Stop. Counts
+  have explicit delivery/consumption boundaries, not elapsed-time drains; real
+  global WinEvent delivery is tested for eventual state separately. Parallel
+  fixture processes can produce relevant global events for each other, so a fixed
+  time window is not an isolated notification batch.
 - `app.smoke`: creates a message-only window, posts its close request, dispatches
   destruction, and exits zero without inspecting or modifying Explorer.
 - `app.instance`: exercises the resident lifetime guard with isolated kernel-object
@@ -31,6 +39,18 @@ workspace bridge check and twenty-second instance check.
   real Explorer readiness or end-to-end collection latency.
 - `explorer.native_guard`: rejects additional synthetic native-view children
   only beneath its selected hidden fixture, and restores creation on detach.
+- `workspace.performance`: counts custom publication decisions for unchanged
+  passes, labels, selection, placement, external visibility, and new lifetimes.
+  Hidden test-owned strips check visual-hover change detection, theme refresh,
+  device-resource release and lazy recreation. This is not a frame-rate benchmark.
+  The controller's reconciliation phase also uses unprepared sentinel clients
+  and an uninitialized probe to check missing batch coverage, late attachments,
+  generation replacement, stale removal nominations, and later fresh validation
+  for both backends. This injects lifecycle changes at the automation boundary;
+  it does not reproduce Shell COM pumping or Explorer attachment.
+- `hook.staging`: injects a runtime copy failure after writing a partial file and
+  checks that the per-attempt destination and staging directory are removed. It
+  runs serially because its runtime source fixture shares the test binary directory.
 - `workspace.bridge`: loads the real DLL into the test process, uses hidden
   synthetic roots on a dedicated UI thread, and checks protocol rejection,
   configure/presentation bounds, creation interception, normal detach, lease

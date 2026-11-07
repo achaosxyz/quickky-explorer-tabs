@@ -93,6 +93,9 @@ The DLL creates the classic owned surface or diagnostic child on the Explorer UI
 the controller before changing membership or visibility, avoiding synchronous
 cross-process command reentrancy. UI-thread keyboard interception translates
 Ctrl+T, Ctrl+W, and Ctrl+Tab into Quickky actions for the attached root only.
+Message type, supported shortcut, root, and modifier checks precede kernel-handle
+liveness polling. The process/lease watchdog does not detect a controller STA
+blocked in a synchronous Shell call while its process and lease remain live.
 
 Workspace attachment is two-phase. Prepare binds the subclass, a kernel-cleared
 per-window lifetime property, nonce, and
@@ -118,6 +121,9 @@ unique per-run directory. Runtime names come from the build, not a wildcard DLL
 scan. Missing app-local files permit build-tree runs with an installed runtime;
 packaging requires the complete toolchain list. Failed staging removes only
 files created by that attempt. Explorer may pin loaded copies until it exits.
+Runtime destinations are registered for cleanup before copying, including a
+partially written destination when CopyFile fails. A copy-function test seam
+exercises that failure without loading a hook or touching Explorer.
 Cleanup is best-effort and emits a debug diagnostic when a staging directory
 remains. It never unloads another process's module or deletes unrelated folders.
 Retained files may persist after Explorer exits until temporary storage is cleaned;

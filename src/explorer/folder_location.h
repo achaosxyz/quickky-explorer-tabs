@@ -4,6 +4,7 @@
 #include <shlobj.h>
 
 #include <memory>
+#include <map>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -29,6 +30,9 @@ struct FolderLocation {
     std::wstring display_name;
 };
 
+using FolderLocations = std::map<HWND, std::vector<FolderLocation>>;
+// One read-only automation pass; an unreadable/excluded view empties its root.
+FolderLocations ResolveFolderLocations(const std::vector<HWND>& roots);
 std::optional<FolderLocation> ResolveFolder(HWND root);
 // A native frame can have several automation entries; scope checks inspect all.
 std::vector<FolderLocation> ResolveFolders(HWND root);

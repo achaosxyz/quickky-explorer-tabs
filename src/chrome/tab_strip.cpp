@@ -86,6 +86,7 @@ bool TabStrip::Create(HWND parent, Input input, std::weak_ptr<void> lifetime, bo
     if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory_.GetAddressOf())) ||
         FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
             reinterpret_cast<IUnknown**>(text_factory_.GetAddressOf())))) return false;
+    RefreshTheme();
     window_ = CreateWindowExW(classic_caption_ ? WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE : 0,
         kClass, L"QTabs", classic_caption_ ? WS_POPUP : WS_CHILD | WS_VISIBLE,
         0, 0, 0, 0, parent, nullptr, module, this);
@@ -123,9 +124,10 @@ bool TabStrip::Configure(const GuardRequest& request)
     return true;
 }
 
-void TabStrip::Hide()
+void TabStrip::Hide(bool release_resources)
 {
     if (window_) ShowWindow(window_, SW_HIDE);
+    if (release_resources) { brush_.Reset(); target_.Reset(); }
 }
 
 bool TabStrip::Resize()
@@ -142,7 +144,7 @@ bool TabStrip::Resize()
     int left = 0, top = 0;
     int width = std::max(0, static_cast<int>(bounds.right) - static_cast<int>(150 * scale_));
     if (classic_caption_) {
-        if (!IsWindowVisible(parent_) || IsIconic(parent_) || !IsWindowEnabled(parent_)) { Hide(); return true; }
+        if (!IsWindowVisible(parent_) || IsIconic(parent_) || !IsWindowEnabled(parent_)) { Hide(true); return true; }
         RECT root{}, buttons{};
         if ((GetWindowLongPtrW(parent_, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) ||
             !(GetWindowLongPtrW(parent_, GWL_STYLE) & WS_CAPTION) ||
@@ -243,6 +245,14 @@ TabStrip::Hit TabStrip::HitTest(int x, int y) const
     return {TabInput::Select, 0};
 }
 
+bool TabStrip::UpdateHover(int x, int y)
+{
+    const auto previous = HitTest(hover_x_, hover_y_).tab;
+    hover_x_ = x;
+    hover_y_ = y;
+    return previous != HitTest(hover_x_, hover_y_).tab;
+}
+
 bool TabStrip::Resources()
 {
     if (target_ && brush_) return true;
@@ -257,41 +267,47 @@ bool TabStrip::Resources()
     return SUCCEEDED(target_->CreateSolidColorBrush(Rgb(0), &brush_));
 }
 
+void TabStrip::RefreshTheme()
+{
+    DWORD light = 1;
+    DWORD bytes = sizeof(light);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &bytes);
+    HIGHCONTRASTW contrast{sizeof(contrast)};
+    SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
+    light_ = light != 0;
+    high_contrast_ = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    background_ = high_contrast_ ? D2D1::ColorF(
+        GetRValue(GetSysColor(COLOR_WINDOW)) / 255.0f,
+        GetGValue(GetSysColor(COLOR_WINDOW)) / 255.0f,
+        GetBValue(GetSysColor(COLOR_WINDOW)) / 255.0f) : Rgb(light ? 0xf0f0f0 : 0x202020);
+    foreground_ = high_contrast_ ? D2D1::ColorF(
+        GetRValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f,
+        GetGValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f,
+        GetBValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f) : Rgb(light ? 0x202020 : 0xf0f0f0);
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
+}
+
 void TabStrip::Paint()
 {
     PAINTSTRUCT paint{};
     BeginPaint(window_, &paint);
-    if (Resources() && format_) {
-        DWORD light = 1;
-        DWORD bytes = sizeof(light);
-        RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-            L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &bytes);
-        HIGHCONTRASTW contrast{sizeof(contrast)};
-        SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
-        const bool high_contrast = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
-        const auto background = high_contrast ? D2D1::ColorF(
-            GetRValue(GetSysColor(COLOR_WINDOW)) / 255.0f,
-            GetGValue(GetSysColor(COLOR_WINDOW)) / 255.0f,
-            GetBValue(GetSysColor(COLOR_WINDOW)) / 255.0f) : Rgb(light ? 0xf0f0f0 : 0x202020);
-        const auto foreground = high_contrast ? D2D1::ColorF(
-            GetRValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f,
-            GetGValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f,
-            GetBValue(GetSysColor(COLOR_WINDOWTEXT)) / 255.0f) : Rgb(light ? 0x202020 : 0xf0f0f0);
+    if (IsWindowVisible(window_) && Resources() && format_) {
         target_->BeginDraw();
-        target_->Clear(background);
+        target_->Clear(background_);
         const auto hovered = HitTest(hover_x_, hover_y_);
         for (unsigned i = 0; i < shown_; ++i) {
             const auto& tab = state_.tabs[first_ + i];
             const float left = i * tab_width_;
             const bool selected = tab.id == state_.active;
-            brush_->SetColor(high_contrast ? background : Rgb(selected ?
-                (light ? 0xffffff : 0x323232) : (hovered.tab == tab.id ?
-                (light ? 0xe3e3e3 : 0x292929) : (light ? 0xf0f0f0 : 0x202020))));
+            brush_->SetColor(high_contrast_ ? background_ : Rgb(selected ?
+                (light_ ? 0xffffff : 0x323232) : (hovered.tab == tab.id ?
+                (light_ ? 0xe3e3e3 : 0x292929) : (light_ ? 0xf0f0f0 : 0x202020))));
             const auto shape = D2D1::RoundedRect(D2D1::RectF(left + 2 * scale_, 4 * scale_,
                 left + tab_width_ - 2 * scale_, static_cast<float>(height_)),
                 corner_radius_ * scale_, corner_radius_ * scale_);
             target_->FillRoundedRectangle(shape, brush_.Get());
-            brush_->SetColor(foreground);
+            brush_->SetColor(foreground_);
             target_->DrawTextW(tab.title, static_cast<UINT32>(wcslen(tab.title)), format_.Get(),
                 D2D1::RectF(left + 14 * scale_, 4 * scale_, left + tab_width_ - 34 * scale_,
                     static_cast<float>(height_)), brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
@@ -305,7 +321,7 @@ void TabStrip::Paint()
                 D2D1::Point2F(left + tab_width_ - 12 * scale_, height_ - scale_), brush_.Get(), 2 * scale_);
         }
         // High-contrast glyphs must not fall back to the independent app theme.
-        brush_->SetColor(foreground);
+        brush_->SetColor(foreground_);
         const float plus = shown_ * tab_width_ + 20 * scale_;
         const float middle = height_ * 0.5f;
         target_->DrawLine(D2D1::Point2F(plus - 5 * scale_, middle),
@@ -341,12 +357,20 @@ LRESULT TabStrip::Handle(UINT message, WPARAM wparam, LPARAM lparam)
     case WM_PAINT: Paint(); return 0;
     case WM_ERASEBKGND: return 1;
     case WM_MOUSEMOVE: {
-        hover_x_ = GET_X_LPARAM(lparam); hover_y_ = GET_Y_LPARAM(lparam);
-        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window_, 0};
-        TrackMouseEvent(&tracking); InvalidateRect(window_, nullptr, FALSE); return 0;
+        const bool changed = UpdateHover(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+        if (!tracking_mouse_) {
+            TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window_, 0};
+            tracking_mouse_ = TrackMouseEvent(&tracking) != FALSE;
+        }
+        if (changed) InvalidateRect(window_, nullptr, FALSE);
+        return 0;
     }
-    case WM_MOUSELEAVE:
-        hover_x_ = hover_y_ = -1; InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_MOUSELEAVE: {
+        const bool changed = UpdateHover(-1, -1);
+        tracking_mouse_ = false;
+        if (changed) InvalidateRect(window_, nullptr, FALSE);
+        return 0;
+    }
     case WM_LBUTTONUP: {
         const auto hit = HitTest(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
         if (hit.tab || hit.action == TabInput::New) input_(hit.action, hit.tab);
@@ -371,7 +395,11 @@ LRESULT TabStrip::Handle(UINT message, WPARAM wparam, LPARAM lparam)
         if (GET_WHEEL_DELTA_WPARAM(wparam) > 0) { if (first_) --first_; }
         else if (first_ + shown_ < state_.count) ++first_;
         InvalidateRect(window_, nullptr, FALSE); return 0;
-    case WM_THEMECHANGED: case WM_SETTINGCHANGE: case WM_DPICHANGED:
+    case WM_THEMECHANGED: case WM_SETTINGCHANGE:
+        RefreshTheme(); Resize(); return 0;
+    case WM_SYSCOLORCHANGE:
+        RefreshTheme(); return 0;
+    case WM_DPICHANGED:
         Resize(); return 0;
     }
     return DefWindowProcW(window_, message, wparam, lparam);

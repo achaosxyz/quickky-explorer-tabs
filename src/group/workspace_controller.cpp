@@ -31,6 +31,56 @@ WorkspaceController::WorkspaceController(HWND sender, CaptureCoordinator& captur
 WorkspaceController::~WorkspaceController() { Stop(); }
 bool WorkspaceController::Initialize() { native_ = UsesNativeTabs(); return library_.Load(); }
 
+std::vector<HWND> WorkspaceController::FolderRoots(
+    const std::map<NativeWindow, WindowCandidate>& visible) const
+{
+    std::vector<HWND> roots;
+    for (const auto& entry : entries_) roots.push_back(reinterpret_cast<HWND>(entry.first));
+    for (const auto& item : visible) {
+        if (entries_.count(item.first) || entries_.size() >= kMaxWorkspaceTabs) continue;
+        const auto target = reinterpret_cast<HWND>(item.first);
+        const auto blocked = quarantined_.find(item.first);
+        if (native_ ? (blocked != quarantined_.end() && blocked->second == item.second) :
+            NativeTabGuard::CountTabs(target) != 1) continue;
+        roots.push_back(target);
+    }
+    return roots;
+}
+
+std::map<NativeWindow, WindowIdentity> WorkspaceController::SnapshotAttachments() const
+{
+    std::map<NativeWindow, WindowIdentity> attachments;
+    for (const auto& entry : entries_) attachments.emplace(entry.first, entry.second.client->window());
+    return attachments;
+}
+
+void WorkspaceController::ReconcileEntries(const FolderLocations& locations,
+    const std::map<NativeWindow, WindowIdentity>& attachments)
+{
+    std::vector<std::pair<NativeWindow, WindowIdentity>> removed;
+    for (const auto& attachment : attachments) {
+        const auto target = reinterpret_cast<HWND>(attachment.first);
+        const auto folders = locations.find(target);
+        if (folders == locations.end()) continue; // Missing coverage is not a scope rejection.
+        const auto current = entries_.find(attachment.first);
+        if (current == entries_.end() || current->second.client->window() != attachment.second) continue;
+        const auto candidate = probe_.Inspect(target, !native_);
+        // Inspect may pump too. Never apply this batch to a replacement attachment.
+        const auto entry = entries_.find(attachment.first);
+        if (entry == entries_.end() || entry->second.client->window() != attachment.second) continue;
+        const bool valid = candidate && *candidate == attachment.second.window && entry->second.client->Healthy() &&
+            (native_ ? InNativeScope(target, locations) :
+             (folders->second.size() == 1 && (root_.empty() ||
+              IsWithinDirectory(folders->second.front().parsing_name, root_))));
+        const auto retained = entries_.find(attachment.first);
+        if (retained == entries_.end() || retained->second.client->window() != attachment.second) continue;
+        if (!valid) {
+            removed.push_back(attachment);
+        } else if (!native_) retained->second.label = folders->second.front().display_name;
+    }
+    for (const auto& attachment : removed) ReleaseIfCurrent(attachment.first, attachment.second);
+}
+
 const Tab* WorkspaceController::FindTab(TabId id) const
 {
     const auto& tabs = group_.tabs();
@@ -67,6 +117,12 @@ void WorkspaceController::Release(NativeWindow window)
     entries_.erase(found);
 }
 
+void WorkspaceController::ReleaseIfCurrent(NativeWindow window, const WindowIdentity& identity)
+{
+    const auto current = entries_.find(window);
+    if (current != entries_.end() && current->second.client->window() == identity) Release(window);
+}
+
 void WorkspaceController::Stop()
 {
     native_transferred_ = false;
@@ -83,29 +139,20 @@ bool WorkspaceController::Refresh(const std::map<NativeWindow, WindowCandidate>&
     native_transferred_ = false;
     if (native_) return RefreshNative(visible);
     SavePlacement();
-    std::vector<NativeWindow> removed;
-    for (auto& item : entries_) {
-        const auto& identity = item.second.client->window();
-        const auto candidate = probe_.Inspect(reinterpret_cast<HWND>(item.first), true);
-        if (!candidate || !(*candidate == identity.window) || !item.second.client->Healthy()) {
-            removed.push_back(item.first);
-            continue;
-        }
-        const auto location = ResolveFolder(reinterpret_cast<HWND>(item.first));
-        if (!location || (!root_.empty() && !IsWithinDirectory(location->parsing_name, root_))) {
-            removed.push_back(item.first);
-        } else item.second.label = location->display_name;
-    }
-    for (const auto window : removed) Release(window);
-
-    // Shell COM can pump messages; do not iterate discovery's mutable map across it.
+    // Initial snapshots never authorize commit or native mutation.
     const auto candidates = visible;
+    const auto attachments = SnapshotAttachments();
+    const auto locations = ResolveFolderLocations(FolderRoots(candidates));
+    ReconcileEntries(locations, attachments);
+
     for (const auto& item : candidates) {
         if (entries_.count(item.first) || entries_.size() >= kMaxWorkspaceTabs) continue;
         const HWND target = reinterpret_cast<HWND>(item.first);
         if (NativeTabGuard::CountTabs(target) != 1) continue;
-        const auto location = ResolveFolder(target);
-        if (!location || (!root_.empty() && !IsWithinDirectory(location->parsing_name, root_))) continue;
+        const auto found = locations.find(target);
+        if (found == locations.end()) continue; // It became ready after this pass's snapshot.
+        const auto& folders = found->second;
+        if (folders.size() != 1 || (!root_.empty() && !IsWithinDirectory(folders.front().parsing_name, root_))) continue;
         const auto current = probe_.Inspect(target);
         if (!current || !(*current == item.second)) continue;
         const auto identity = capture_.Observe(*current);
@@ -123,7 +170,7 @@ bool WorkspaceController::Refresh(const std::map<NativeWindow, WindowCandidate>&
         if (!placed_) {
             placed_ = GetWindowPlacement(target, &placement_) != FALSE;
         }
-        entries_.emplace(item.first, Entry{std::move(client), location->display_name});
+        entries_.emplace(item.first, Entry{std::move(client), folders.front().display_name});
     }
     const auto foreground = reinterpret_cast<NativeWindow>(GetForegroundWindow());
     if (const auto entry = entries_.find(foreground); entry != entries_.end() &&
@@ -135,7 +182,14 @@ bool WorkspaceController::Refresh(const std::map<NativeWindow, WindowCandidate>&
 
 bool WorkspaceController::InNativeScope(HWND target) const
 {
-    const auto folders = ResolveFolders(target);
+    return InNativeScope(target, ResolveFolderLocations({target}));
+}
+
+bool WorkspaceController::InNativeScope(HWND target, const FolderLocations& locations) const
+{
+    const auto found = locations.find(target);
+    if (found == locations.end()) return false;
+    const auto& folders = found->second;
     if (folders.empty() || folders.size() != NativeTabGuard::CountTabs(target)) return false;
     return root_.empty() || std::all_of(folders.begin(), folders.end(), [this](const FolderLocation& folder) {
         return IsWithinDirectory(folder.parsing_name, root_);
@@ -145,19 +199,15 @@ bool WorkspaceController::InNativeScope(HWND target) const
 bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandidate>& visible)
 {
     const auto candidates = visible;
-    std::vector<NativeWindow> removed;
-    for (const auto& item : entries_) {
-        const auto candidate = probe_.Inspect(reinterpret_cast<HWND>(item.first));
-        if (!candidate || !(*candidate == item.second.client->window().window) ||
-            !item.second.client->Healthy() || !InNativeScope(reinterpret_cast<HWND>(item.first))) removed.push_back(item.first);
-    }
-    for (const auto window : removed) Release(window);
+    const auto attachments = SnapshotAttachments();
+    const auto locations = ResolveFolderLocations(FolderRoots(candidates));
+    ReconcileEntries(locations, attachments);
     for (const auto& item : candidates) {
         if (entries_.count(item.first) || entries_.size() >= kMaxWorkspaceTabs) continue;
         const auto blocked = quarantined_.find(item.first);
         if (blocked != quarantined_.end() && blocked->second == item.second) continue;
         const auto target = reinterpret_cast<HWND>(item.first);
-        if (!InNativeScope(target)) continue;
+        if (!InNativeScope(target, locations)) continue;
         const auto candidate = probe_.Inspect(target);
         if (!candidate || !(*candidate == item.second)) continue;
         const auto identity = capture_.Observe(*candidate);
@@ -193,8 +243,10 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         const auto source_identity = probe_.Inspect(source_window);
         const auto destination_identity = probe_.Inspect(reinterpret_cast<HWND>(main_));
         if (!source_identity || !(*source_identity == source.window().window) ||
-            !destination_identity || !(*destination_identity == destination.window().window) ||
-            !InNativeScope(source_window) || !InNativeScope(reinterpret_cast<HWND>(main_))) continue;
+            !destination_identity || !(*destination_identity == destination.window().window)) continue;
+        const auto transfer_locations = ResolveFolderLocations({source_window, reinterpret_cast<HWND>(main_)});
+        if (!InNativeScope(source_window, transfer_locations) ||
+            !InNativeScope(reinterpret_cast<HWND>(main_), transfer_locations)) continue;
         GUID created{};
         std::vector<GUID> received;
         GUID selected{};
@@ -228,19 +280,30 @@ bool WorkspaceController::Publish()
         wcsncpy_s(view.tabs[index].title, entry->second.label.c_str(), _TRUNCATE);
         ++index;
     }
-    for (auto& entry : entries_) if (!entry.second.client->Configure(view)) {
-        OutputDebugStringA("Quickky: workspace Configure failed\n");
-        return false;
+    for (auto& entry : entries_) {
+        if (!entry.second.publication.NeedsConfigure(view)) continue;
+        if (!entry.second.client->Configure(view)) {
+            OutputDebugStringA("Quickky: workspace Configure failed\n");
+            return false;
+        }
+        entry.second.publication.Configured(view);
     }
     const auto active = FindTab(view.active);
     if (!active || !placed_) { OutputDebugStringA("Quickky: workspace active placement missing\n"); return false; }
+    const auto present = [this](Entry& entry, bool visible) {
+        const auto window = reinterpret_cast<HWND>(entry.client->window().window.handle);
+        if (!entry.publication.NeedsPresent(placement_, visible, IsWindowVisible(window) != FALSE)) return true;
+        if (!entry.client->Present(placement_, visible)) return false;
+        entry.publication.Presented(placement_, visible);
+        return true;
+    };
     // Show the destination before hiding the source: a failed switch leaves a usable root.
-    if (!entries_.at(active->window.window.handle).client->Present(placement_, true)) {
+    if (!present(entries_.at(active->window.window.handle), true)) {
         OutputDebugStringA("Quickky: workspace active Present failed\n");
         return false;
     }
     for (auto& entry : entries_) {
-        if (entry.first != active->window.window.handle && !entry.second.client->Present(placement_, false)) {
+        if (entry.first != active->window.window.handle && !present(entry.second, false)) {
             OutputDebugStringA("Quickky: workspace inactive Present failed\n");
             return false;
         }

@@ -27,12 +27,20 @@
 
 Run the Debug/Release build and CTest commands from
 [Development](DEVELOPMENT.md). Require `core.model`, `capture.discovery`,
-`explorer.native_guard`, `workspace.bridge`, `app.refresh`, `app.instance`, and
-`app.smoke` to pass. The smoke
+`explorer.native_guard`, `workspace.bridge`, `workspace.performance`, `hook.staging`,
+`app.refresh`, `app.instance`, and `app.smoke` to pass. The smoke
 test must close its message-only window before
 its timeout. Discovery fixtures are hidden windows in the test process, not
 real Explorer attachment. Check invalid arguments return 160 and bounded modes
 exit without leaving a running application.
+
+`workspace.performance` checks publication operation counts and hidden test-owned
+strip resources/hover state, not live frame rates or Explorer resource usage.
+`hook.staging` injects a failed runtime copy after creating a partial destination
+and requires cleanup of that file and its per-attempt directory. Discovery tests
+count deferred enumerations with controlled event/callback delivery, separate
+from eventual real WinEvent delivery. They do not infer delivery completion or
+isolation from a fixed-duration message pump.
 
 Read-only snapshot/observation may run on the development desktop. Confirm the
 output contains no captions or folder paths, diagnostic managed count remains zero,

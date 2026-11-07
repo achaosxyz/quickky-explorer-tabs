@@ -189,6 +189,14 @@ Root and strip callbacks hold the attachment alive across reentrant Win32 calls.
 Detach stops interception/restores the root immediately, but object destruction
 waits until outstanding callback/method scopes have unwound.
 
+Custom publication tracks acknowledged labels/selection and presentation per
+attachment. Unchanged views and already-correct visibility/placement do not send
+Configure/Present again; identity and folder admission are still reconciled.
+Inactive and hidden-owner strips release device-dependent rendering resources;
+transient caption-reflow hiding retains them. Pointer movement repaints only when
+its visual hover target changes. Theme state is refreshed on system notifications
+rather than read during every paint.
+
 - C++17, Win32, and a single-threaded COM apartment for the controller and probes.
 - Direct2D and DirectWrite for the Quickky tab strip.
 - CMake 3.21 or newer and MSVC with C++17 support for Windows x86_64 builds.
@@ -253,6 +261,7 @@ resources/{app.manifest,app.rc.in,resource.h,runtime_files.h.in,logo.png,tab-pre
 resources/locales/{en-US,zh-CN}.json
 resources/locales/tray_strings.h.in
 tests/{core_tests,discovery_tests,native_guard_tests,workspace_bridge_tests,workspace_refresh_tests}.cpp
+tests/{workspace_performance_tests,hook_staging_tests}.cpp
 tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
 tests/app_instance_tests.cpp
@@ -287,6 +296,8 @@ adds these concrete contracts:
 - **Quickky tab:** a stable application-owned ID associated with a managed
   Explorer folder window. A native Explorer tab is not a Quickky tab.
 - **Group:** ordered Quickky tabs, an active tab, and the common window placement.
+- **WorkspacePublicationState:** acknowledged custom view and visibility/placement
+  per attachment; state is never reused across a new attachment lifetime.
 - **Workspace refresh schedule:** application-thread-only pending work and a
   one-second readiness deadline. New candidates and unadmitted root-window
   readiness hints coalesce into a 25 ms timer;
@@ -323,6 +334,23 @@ it is no longer eligible, not necessarily that its native window was destroyed.
 Observed destroy events force a new identity if the handle has already been
 reused. Generations protect model commands; they are not a Windows guarantee
 that no lifecycle event can ever be missed.
+
+Relevant lifecycle/foreground bursts queue one discovery-thread timer instead
+of enumerating inside each WinEvent callback. Events delivered while that timer
+is pending share one pass; events delivered after consumption may start another.
+This is not a guarantee of one scan per wall-clock notification burst across
+asynchronous/global event delivery. Unrelated foreground windows do
+not trigger enumeration. Known destruction retires the identity immediately,
+before deferred reconciliation can observe a reused handle. Read-only discovery
+continues while tabs are disabled; only attachment work requires enablement.
+Folder checks batch the requested roots into one ShellWindows enumeration per
+validation phase. Reconciliation binds the batch to the attachment identities
+captured before automation: a missing result or changed generation defers that
+entry to a later pass, while an empty result still rejects a covered attachment.
+Deferred removals likewise recheck attachment identity. Fresh pre-commit and
+pre-transfer checks remain mandatory. Shell
+automation is synchronous and has no hard timeout: process/lease watchdogs detect
+loss, not a live but blocked controller thread.
 
 The controller remains message-only. `--snapshot` writes a read-only JSON
 snapshot to redirected standard output; `--observe-ms N` runs a bounded observer;

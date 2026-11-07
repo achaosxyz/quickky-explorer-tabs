@@ -87,6 +87,15 @@ The HWND accessible name includes the tab count; individual accessible tab/butto
 providers are not implemented. Do not add a full UI framework for these primitives.
 Management-page localization belongs to [Settings](SETTINGS.md).
 
+Inactive, minimized, and hidden-owner surfaces discard their HWND render target
+and brush; factories and text format remain for lazy repaint on show. Transient
+caption-reflow hiding retains them to avoid allocation churn. Hover invalidation
+occurs only when the painted tab changes, not for every coordinate change within
+it. Theme/high-contrast
+state is cached between theme, settings, and system-color notifications; root
+notifications also invalidate the child fixture's cache. Paint does not query
+the registry or high-contrast settings.
+
 ## Acceptance evidence
 
 Test themes, scaling, monitor transitions, input hit regions, title-bar behavior,

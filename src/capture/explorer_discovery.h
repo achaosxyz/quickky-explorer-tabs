@@ -35,10 +35,13 @@ public:
     const std::map<NativeWindow, WindowCandidate>& windows() const noexcept { return windows_; }
 
 private:
+    friend struct ExplorerDiscoveryTestAccess;
     struct Enumeration;
     static BOOL CALLBACK Enumerate(HWND window, LPARAM parameter) noexcept;
     static void CALLBACK WinEvent(HWINEVENTHOOK, DWORD event, HWND window,
         LONG object, LONG child, DWORD, DWORD) noexcept;
+    static void CALLBACK Reconcile(HWND, UINT, UINT_PTR, DWORD) noexcept;
+    void ScheduleRefresh() noexcept;
     void OnEvent(DWORD event, HWND window, LONG object, LONG child);
     void RequestRetry(HWND window);
 
@@ -49,6 +52,8 @@ private:
     std::map<NativeWindow, WindowCandidate> windows_;
     HWINEVENTHOOK lifecycle_ = nullptr;
     HWINEVENTHOOK foreground_ = nullptr;
+    UINT_PTR reconcile_timer_ = 0;
+    HWND pending_foreground_ = nullptr;
     bool refreshing_ = false;
     bool refresh_pending_ = false;
     bool failed_ = false;
