@@ -56,6 +56,12 @@ therefore means unconfirmed completion, not rollback or a preserved source; the
 controller quarantines the source identity instead of retrying the mutation. Native
 commit binds a matched `NativeFrame` and current-folder input only, without a
 guard, region clipping, Quickky strip, or window visibility changes.
+Preparation uses the existing version-6 protocol without an ABI descriptor.
+Commit selects a built-in, version-organized map against the actual loaded image
+and validates its accessor rule on the target thread before any private COM call.
+There is no controller resolver/readiness worker, DbgHelp session, runtime PDB
+parser, symbol cache, download, or object-layout scan.
+See [native ABI adaptation](NATIVE_ABI.md).
 
 The scoped native-guard probe uses thread-specific `WH_CALLWNDPROC` to bootstrap
 on a selected Explorer UI thread. Versioned fixed-size `WM_COPYDATA` requests

@@ -17,8 +17,10 @@ host merged the tab but lost selection and navigation history. Those limitations
 must remain explicit; native appearance is not evidence of state preservation.
 
 This is an early preview, not complete native-tab replacement or general
-Windows 10/11 compatibility. Windows 11 supports the single matched ABI profile
-in [Explorer adapters](EXPLORER.md); unknown images remain ordinary windows.
+Windows 10/11 compatibility. Windows 11 uses version-organized built-in maps and
+reusable accessor rules described in [native ABI adaptation](NATIVE_ABI.md).
+Only the original image has live acceptance; missing maps or unknown contracts
+leave windows ordinary. Runtime symbol loading and downloads are not used.
 Windows 10 build 19045 has scoped live acceptance for custom capture, current-folder
 creation, maximized switching, minimize/restore, tray actions, and recovery.
 Other layouts/builds remain unverified.
@@ -206,8 +208,17 @@ rather than read during every paint.
 
 No third-party dependencies, package manager, UI framework, or installer has been
 selected. The Windows 11 adapter uses Explorer's private tab-actions interface;
-the initial ABI profile is restricted to the inspected ExplorerFrame image's
-CodeView GUID/age. Unknown profiles reject mutation rather than guess offsets.
+versioned maps compiled into the integration DLL locate reviewed entry points.
+CodeView GUID/age select a map for the actual loaded image; a version string alone
+never authorizes calls. The image must have one valid, unambiguous CodeView record.
+Reusable accessor rules validate implementation and derive object displacements;
+only explicitly reviewed relocation, displacement, and diagnostic metadata
+operands are normalized. Native storage must be in committed readable memory,
+not execute-only or guarded pages. There is no download, runtime PDB parser, symbol
+cache, or resolver worker. Missing maps or unknown contracts reject mutation
+rather than guess offsets. The dedicated
+[native ABI adaptation design](NATIVE_ABI.md) defines the map catalog, recognition
+family, compatibility limits, and extension procedure.
 CMake builds `QTabs.exe`,
 `QuickkyExplorerHook.dll`, module static libraries, and synthetic/model test
 executables when testing is enabled. Windows 11 retains the original tab host and
@@ -253,7 +264,9 @@ src/app/single_instance.h
 src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cpp}
 src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
-src/explorer/{native_tab_guard,folder_location,native_frame}.{h,cpp}
+src/explorer/{native_tab_guard,folder_location,native_frame,native_abi}.{h,cpp}
+src/explorer/native_abi_profiles.cpp
+src/explorer/abi_profiles/{profile,10.0.26100.9949}.h
 src/chrome/tab_strip.{h,cpp}
 src/settings/preferences.{h,cpp}
 src/common/{window_identity,hook_protocol}.h
@@ -265,9 +278,10 @@ tests/{workspace_performance_tests,hook_staging_tests}.cpp
 tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
 tests/app_instance_tests.cpp
+tests/native_abi_tests.cpp
 tests/README.md
 docs/design/PROJECT_DESIGN.md
-docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,CHROME,SETTINGS,COMMON}.md
+docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,NATIVE_ABI,CHROME,SETTINGS,COMMON}.md
 docs/guides/{DEVELOPMENT,VALIDATION,EXPLORER_TESTING,RELEASE}.md
 ```
 
@@ -304,7 +318,7 @@ adds these concrete contracts:
   readiness retries and confirmed native-transfer continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window. A version-5 bounded
+  Quickky changes without closing the user's Explorer window. A version-6 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
   a per-window lifetime property and cancellation event protect local recovery.
   New input appends a bounded, validated PIDL snapshot; no native pointers cross
@@ -315,6 +329,9 @@ adds these concrete contracts:
 - **Settings:** per-user tabs/startup preferences and management-interface locale
   (`en-US` or `zh-CN`). Runtime locale resolution reads the language preference
   or Windows UI language; no language-picker page is implemented.
+- **Native ABI profile:** a version-organized compiled map of image identity,
+  vtable/method RVAs, and accessor-rule ID. The target selects the actual loaded
+  image's map and derives layout locally. Profiles never travel over IPC.
 
 Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their
@@ -413,7 +430,8 @@ The attachment flow is:
 
 1. Discover an eligible Explorer folder window and validate its identity.
 2. Choose the platform backend. Windows 10 prepares the nonce-bound custom-tab
-   attachment and revalidates before committing presentation. Windows 11 binds
+   attachment and revalidates before committing presentation. Windows 11 selects
+   and validates a built-in native ABI map on the target UI thread, then binds
    a native-only bridge, validates the ABI capability and folder boundary, and
    retains native presentation. Neither path admits a destroyed or reused HWND.
 3. Commit the Quickky tab only after attachment succeeds; keep or restore the

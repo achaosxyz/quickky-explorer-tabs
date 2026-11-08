@@ -2,6 +2,7 @@
 
 #include "explorer/folder_location.h"
 #include "common/hook_protocol.h"
+#include "explorer/native_abi.h"
 #include <array>
 #include <functional>
 #include <memory>
@@ -9,7 +10,7 @@
 
 namespace quickky {
 
-// Owning-UI-thread adapter for an explicitly matched ExplorerFrame ABI. It never
+// Owning-UI-thread adapter for a validated ExplorerFrame accessor contract. It never
 // hides windows or draws chrome. A COM reference keeps the native object alive
 // through reentrant window destruction; callbacks retain this adapter as well.
 class NativeFrame : public std::enable_shared_from_this<NativeFrame> {
@@ -35,6 +36,7 @@ private:
     unsigned char* object_ = nullptr;
     void* actions_ = nullptr;
     void** original_ = nullptr;
+    NativeAbiLayout layout_;
     std::array<void*, 13> proxy_{};
     std::weak_ptr<void> owner_;
     std::function<bool()> available_;

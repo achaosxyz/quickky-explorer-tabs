@@ -25,7 +25,8 @@ or complete native-tab replacement.
    mutates candidates.
 3. Keep tabs disabled by default. Windows 10 custom groups require single-view
    windows and restore hidden members on disable/exit/controller loss. Windows 11
-   uses an explicitly matched native ABI: confirm destination GUID/PIDL before
+   selects a built-in versioned map and validates its accessor rule without
+   downloading or parsing symbols: confirm destination GUID/PIDL before
    deleting the revalidated source GUID, never a whole source frame. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.
@@ -97,6 +98,7 @@ All listed modules contain code; a separate management page is not implemented:
 - [Group](docs/design/GROUP.md)
 - [Hook integration](docs/design/HOOK.md)
 - [Explorer adapters](docs/design/EXPLORER.md)
+- [Native ABI adaptation](docs/design/NATIVE_ABI.md)
 - [Tab chrome](docs/design/CHROME.md)
 - [Settings and localization](docs/design/SETTINGS.md)
 - [Shared contracts](docs/design/COMMON.md)

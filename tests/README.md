@@ -1,9 +1,9 @@
 # Tests
 
-CTest registers nine checks when `BUILD_TESTING` is enabled (the default).
+CTest registers ten checks when `BUILD_TESTING` is enabled (the default).
 All checks retain explicit failure handling in Release builds; no third-party
 test framework is required. Timeouts are ten seconds, except the fifteen-second
-workspace bridge check and twenty-second instance check.
+workspace bridge check and twenty-second instance/native-ABI checks.
 
 - `core.model`: thirteen groups of pure tests for tab ordering, stable IDs,
   selection/removal, duplicate events, candidate lifetime changes, acknowledgment
@@ -39,6 +39,18 @@ workspace bridge check and twenty-second instance check.
   real Explorer readiness or end-to-end collection latency.
 - `explorer.native_guard`: rejects additional synthetic native-view children
   only beneath its selected hidden fixture, and restores creation on detach.
+- `explorer.native_abi`: rejects malformed PE data, descriptor mismatches, unknown
+  accessor code, and redirected lookup calls without executing native methods.
+  Synthetic PE records check unique valid identities and empty outputs on failure
+  on every host. Test-owned memory covers readable, execute-only, guarded,
+  inaccessible, copy-on-write, reserved, and region-boundary cases.
+  When the verified system image is available, private byte-buffer fixtures check
+  catalog selection/order, rejected unknown identities/rules, a separately
+  registered synthetic identity, relocated accessors, decoded field changes, and
+  accepted diagnostic immediates with rejected instruction/call opcode changes.
+  Other hosts report those positive cases as unavailable rather than claiming
+  compatibility. No test downloads or parses PDBs, starts a resolver worker, or
+  attaches to Explorer. Synthetic maps do not establish another OS's compatibility.
 - `workspace.performance`: counts custom publication decisions for unchanged
   passes, labels, selection, placement, external visibility, and new lifetimes.
   Hidden test-owned strips check visual-hover change detection, theme refresh,

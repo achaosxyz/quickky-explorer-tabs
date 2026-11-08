@@ -5,6 +5,8 @@
 `window_identity.h` defines `NativeWindow`, `TabId`, `WindowCandidate`, and
 `WindowIdentity` for discovery and models. `hook_protocol.h` defines the concrete
 versioned bridge used by the application, DLL, and guard-only probe.
+Native map types live in `explorer/abi_profiles/profile.h` and never cross this
+protocol boundary.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
@@ -35,6 +37,10 @@ such as tab identity, attachment identity, and cross-process request/result data
 by controller, scoped workspace DLL, and manual guard probe. It carries target
 HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
 labels, and explicit presentation/input commands. Payloads are value-only.
+Native preparation carries no ABI descriptor, RVAs, or function pointers. The
+target selects a built-in map and derives the validated layout locally in
+`explorer`, not in this shared-data header.
+See [native ABI adaptation](NATIVE_ABI.md).
 The nonce also derives a `Local\QTabs.Lease.` cancellation-event name; no handles
 or C++ object pointers cross process boundaries. Ordinary commands are fixed-size. Only a New
 input appends an absolute PIDL snapshot (at most 64 KiB, including its terminator);

@@ -9,6 +9,9 @@ fixture is diagnostic-only, not the Windows 11 backend or proof of Windows 10
 presentation compatibility. See the
 [overall design](PROJECT_DESIGN.md).
 
+The dedicated [native ABI adaptation design](NATIVE_ABI.md) defines offline map
+selection, accessor recognition, and the compatibility-extension procedure.
+
 ## Responsibility
 
 Isolate Explorer-specific integration. Windows 10 uses Quickky-owned tabs;
@@ -37,11 +40,36 @@ Windows 11 uses Explorer-owned tabs and the inspected native drop semantics.
 
 ## Boundary
 
-`NativeFrame` belongs in this module. It binds on the owning UI thread, validates
-the loaded ExplorerFrame CodeView identity, and uses the tab-actions interface
-for enumeration, native drop add-at-index, and removal of a specific GUID. The
-initial profile validates window-data and tab-actions vtables before accessing
-private fields. It must not scan unknown layouts or mutate unmatched profiles.
+`NativeFrame` belongs in this module. It binds on the owning UI thread and uses
+the inspected tab-actions interface for native drop add-at-index and removal of
+a specific GUID. Enumeration still requires private tab storage: the inspected
+interface has no enumeration method, and registering an event handler does not
+return an initial snapshot. Symbol availability is not an ABI contract.
+
+Compatibility requires both an embedded map for the actual loaded image and a
+recognized accessor contract, not a file-version string allowlist. Maps are
+organized by component version; CodeView GUID/age and image size select reviewed
+vtables and methods. Several maps can share one accessor rule. The initial
+rule recognizes the inspected x64 implementations of `GetTabDataById` and
+`GetBrowserTabFromId`: normalized whole-function fingerprints preserve instruction
+flow, record size, GUID fields, and output layout while permitting relocation and
+the three decoded object displacements and four reviewed diagnostic source-line
+constants to change. Unknown function bodies reject
+integration even when their names match. This is a deliberately narrow contract
+family, not a general x64 decoder or a stable Microsoft API.
+
+Map selection runs on the owning Explorer UI thread. There is no downloader,
+runtime PDB parser, symbol cache, resolver worker, or cross-process ABI descriptor.
+Development-only PDB inspection supplies evidence for new map entries. Missing
+maps or failed validation leave windows ordinary; no nearest-version or shifted-
+RVA fallback is permitted. Maps contain identity and RVAs, not executable code.
+Before accessing objects, the target validates image identity, section
+bounds, the accessor contract, both vtables, and method entries. The native
+object/record memory guard accepts only committed readable regions,
+excluding execute-only and guarded pages. The existing
+13-slot tab-actions interface and typed drop entry point remain explicit private
+contracts. A new compiler or changed private behavior may require a new reviewed
+contract; finding symbols alone must never authorize native calls.
 Active GUID/PIDL snapshots use the matched native `GetTabDataById` action on the
 owner thread; its title and PIDL outputs use task-allocator ownership. Controller
 scope validation remains public Shell automation. Native snapshots do not make
@@ -62,9 +90,12 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
-The initial ABI profile is restricted to the loaded ExplorerFrame CodeView GUID
+The current embedded map identifies the loaded ExplorerFrame CodeView GUID
 `822A8C93-960A-C7B6-7F6A-87CF48E8CE6F`, age 1 (file version
-`10.0.26100.9949`). Other profiles are rejected, not guessed from OS names.
+`10.0.26100.9949`). This remains the only live-verified image. The catalog accepts
+additional reviewed version files, not arbitrary updates: missing identities,
+unknown rule IDs, changed accessor contracts, or invalid locators fail closed.
+Selection uses the loaded module, not a potentially newer on-disk DLL.
 The existing clipping experiment is not the Windows 11 product backend. Windows
 10 layout reservation requires its own validation, not an assumed XAML host.
 The diagnostic clipping experiment defers reentrant region restoration until

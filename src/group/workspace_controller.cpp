@@ -12,7 +12,7 @@ namespace {
 bool UsesNativeTabs()
 {
     // This chooses a backend, not an ABI capability. NativeFrame separately
-    // rejects images outside its matched CodeView profile on the target thread.
+    // validates a built-in map and accessor contract on the target thread.
     OSVERSIONINFOEXW version{sizeof(version)};
     version.dwMajorVersion = 10;
     version.dwBuildNumber = 22000;

@@ -28,7 +28,7 @@
 Run the Debug/Release build and CTest commands from
 [Development](DEVELOPMENT.md). Require `core.model`, `capture.discovery`,
 `explorer.native_guard`, `workspace.bridge`, `workspace.performance`, `hook.staging`,
-`app.refresh`, `app.instance`, and `app.smoke` to pass. The smoke
+`app.refresh`, `app.instance`, `explorer.native_abi`, and `app.smoke` to pass. The smoke
 test must close its message-only window before
 its timeout. Discovery fixtures are hidden windows in the test process, not
 real Explorer attachment. Check invalid arguments return 160 and bounded modes

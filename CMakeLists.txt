@@ -92,9 +92,11 @@ add_library(quickky_explorer STATIC
     src/explorer/native_tab_guard.cpp
     src/explorer/folder_location.cpp
     src/explorer/native_frame.cpp
+    src/explorer/native_abi.cpp
+    src/explorer/native_abi_profiles.cpp
 )
 target_include_directories(quickky_explorer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(quickky_explorer PUBLIC user32 gdi32 comctl32 ole32 oleaut32 shell32 uuid advapi32)
+target_link_libraries(quickky_explorer PUBLIC user32 gdi32 comctl32 ole32 oleaut32 shell32 uuid advapi32 bcrypt psapi)
 quickky_configure_target(quickky_explorer)
 
 add_library(quickky_chrome STATIC src/chrome/tab_strip.cpp)
@@ -132,6 +134,11 @@ quickky_configure_target(QTabs)
 include(CTest)
 
 if(BUILD_TESTING)
+    add_executable(QuickkyNativeAbiTests tests/native_abi_tests.cpp)
+    target_link_libraries(QuickkyNativeAbiTests PRIVATE quickky_explorer)
+    quickky_configure_target(QuickkyNativeAbiTests)
+    add_test(NAME explorer.native_abi COMMAND QuickkyNativeAbiTests)
+    set_tests_properties(explorer.native_abi PROPERTIES TIMEOUT 20)
     add_executable(QTabsAppInstanceTests tests/app_instance_tests.cpp)
     target_link_libraries(QTabsAppInstanceTests PRIVATE quickky_settings)
     quickky_configure_target(QTabsAppInstanceTests)

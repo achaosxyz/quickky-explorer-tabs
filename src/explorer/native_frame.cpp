@@ -3,53 +3,12 @@
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <psapi.h>
 
 namespace quickky {
 namespace {
-// ExplorerFrame 10.0.26100.9949. These offsets were checked against its exact
-// public PDB and scoped native frames, not inferred from the Windows build name.
-constexpr GUID kImageGuid{0x822a8c93, 0x960a, 0xc7b6, {0x7f,0x6a,0x87,0xcf,0x48,0xe8,0xce,0x6f}};
-constexpr std::size_t kWindowTable = 0x27b2a0;
-constexpr std::size_t kActionsTable = 0x27b090;
-constexpr std::size_t kActionsOffset = 0xe8;
-constexpr std::size_t kTabsOffset = 0x3590;
-constexpr std::size_t kActiveOffset = 0x35a8;
 constexpr GUID kNoTab{};
 thread_local std::map<void*, std::weak_ptr<NativeFrame>> proxies;
-
-bool Readable(const void* pointer, std::size_t size)
-{
-    MEMORY_BASIC_INFORMATION region{};
-    const auto p = reinterpret_cast<std::uintptr_t>(pointer);
-    return pointer && VirtualQuery(pointer, &region, sizeof(region)) &&
-        region.State == MEM_COMMIT && !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
-        p >= reinterpret_cast<std::uintptr_t>(region.BaseAddress) &&
-        size <= region.RegionSize - (p - reinterpret_cast<std::uintptr_t>(region.BaseAddress));
-}
-
-bool MatchedImage(unsigned char* image)
-{
-    if (!image) return false;
-    const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) return false;
-    const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return false;
-    const auto directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG];
-    if (!directory.VirtualAddress || directory.Size > nt->OptionalHeader.SizeOfImage ||
-        directory.VirtualAddress > nt->OptionalHeader.SizeOfImage - directory.Size) return false;
-    const auto entries = reinterpret_cast<const IMAGE_DEBUG_DIRECTORY*>(image + directory.VirtualAddress);
-    for (unsigned i = 0; i < directory.Size / sizeof(*entries); ++i) {
-        const auto& entry = entries[i];
-        if (entry.Type != IMAGE_DEBUG_TYPE_CODEVIEW || entry.SizeOfData < 24 ||
-            entry.AddressOfRawData > nt->OptionalHeader.SizeOfImage - 24) continue;
-        const auto bytes = image + entry.AddressOfRawData;
-        GUID guid{}; DWORD age = 0;
-        std::memcpy(&guid, bytes + 4, sizeof(guid));
-        std::memcpy(&age, bytes + 20, sizeof(age));
-        if (std::memcmp(bytes, "RSDS", 4) == 0 && InlineIsEqualGUID(guid, kImageGuid) && age == 1) return true;
-    }
-    return false;
-}
 
 struct BrowserTab {
     void* browser;
@@ -80,16 +39,24 @@ std::shared_ptr<NativeFrame> NativeFrame::Bind(HWND root)
 {
     if (GetWindowThreadProcessId(root, nullptr) != GetCurrentThreadId()) return {};
     auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(L"ExplorerFrame.dll"));
-    if (!MatchedImage(image)) return {};
+    MODULEINFO information{};
+    NativeAbiLayout layout;
+    NativeAbiDescriptor abi;
+    std::size_t profile_count = 0;
+    const auto profiles = BuiltinNativeAbiProfiles(profile_count);
+    if (!image || !GetModuleInformation(GetCurrentProcess(), reinterpret_cast<HMODULE>(image),
+        &information, sizeof(information)) || !SelectNativeAbi(image, information.SizeOfImage,
+        reinterpret_cast<std::uintptr_t>(image), profiles, profile_count, abi, layout)) return {};
     auto object = reinterpret_cast<unsigned char*>(GetWindowLongPtrW(root, 0));
-    if (!Readable(object, kActionsOffset + kActiveOffset + sizeof(void*)) ||
-        *reinterpret_cast<void**>(object) != image + kWindowTable ||
-        *reinterpret_cast<void**>(object + kActionsOffset) != image + kActionsTable) return {};
+    if (!IsNativeMemoryReadable(object, layout.actions + layout.active + sizeof(void*)) ||
+        *reinterpret_cast<void**>(object) != image + abi.window_table ||
+        *reinterpret_cast<void**>(object + layout.actions) != image + abi.actions_table) return {};
     auto frame = std::shared_ptr<NativeFrame>(new NativeFrame);
     frame->root_ = root;
     frame->thread_ = GetCurrentThreadId();
     frame->object_ = object;
-    frame->actions_ = object + kActionsOffset;
+    frame->actions_ = object + layout.actions;
+    frame->layout_ = layout;
     frame->original_ = *reinterpret_cast<void***>(frame->actions_);
     reinterpret_cast<IUnknown*>(frame->actions_)->AddRef();
     return frame;
@@ -112,16 +79,16 @@ bool NativeFrame::ReadTabs(std::vector<GUID>& tabs, GUID& active) const
     tabs.clear(); active = {};
     if (!Valid()) return false;
     const auto bytes = static_cast<const unsigned char*>(actions_);
-    const auto first = *reinterpret_cast<BrowserTab* const*>(bytes + kTabsOffset);
-    const auto last = *reinterpret_cast<BrowserTab* const*>(bytes + kTabsOffset + sizeof(void*));
+    const auto first = *reinterpret_cast<BrowserTab* const*>(bytes + layout_.tabs);
+    const auto last = *reinterpret_cast<BrowserTab* const*>(bytes + layout_.tabs + sizeof(void*));
     const auto begin_address = reinterpret_cast<std::uintptr_t>(first);
     const auto end_address = reinterpret_cast<std::uintptr_t>(last);
     if (end_address < begin_address || (end_address - begin_address) % sizeof(BrowserTab) ||
         end_address - begin_address > kMaxNativeTabs * sizeof(BrowserTab)) return false;
     const auto count = (end_address - begin_address) / sizeof(BrowserTab);
     if (!count) return true;
-    if (!Readable(first, count * sizeof(BrowserTab))) return false;
-    const auto selected = *reinterpret_cast<void* const*>(bytes + kActiveOffset);
+    if (!IsNativeMemoryReadable(first, count * sizeof(BrowserTab))) return false;
+    const auto selected = *reinterpret_cast<void* const*>(bytes + layout_.active);
     for (std::size_t i = 0; i < count; ++i) {
         if (InlineIsEqualGUID(first[i].id, kNoTab)) return false;
         tabs.push_back(first[i].id);

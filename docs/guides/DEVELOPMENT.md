@@ -98,11 +98,18 @@ controller: a different integrity level excludes ordinary Explorer candidates.
 UAC is not needed for these operations.
 
 CTest runs `core.model`, `capture.discovery`, `explorer.native_guard`,
+`explorer.native_abi`,
 `workspace.bridge`, `workspace.performance`, `hook.staging`, `app.instance`,
 `app.refresh`, and `app.smoke`. Fixtures are hidden test-owned windows, not
 real Explorer attachment. Bridge tests load the DLL only into the test process.
 `app.smoke` skips discovery and closes its message-only window.
 `app.refresh` checks scheduling with a synthetic clock, not live collection speed.
+`explorer.native_abi` reads PE data and never calls private Explorer methods;
+positive accessor cases require the verified host image. These cases exercise
+built-in catalog selection, unknown-map/rule rejection, independently registered
+synthetic identities, relocated accessors, and derived field changes. The test
+performs no download, symbol parsing, or attachment. New component maps must follow
+the [native ABI adaptation procedure](../design/NATIVE_ABI.md).
 Invalid arguments return 160 (`ERROR_BAD_ARGUMENTS`). Use `"-DBUILD_TESTING=OFF"`
 in a separate build directory only when intentionally omitting test executables.
 
