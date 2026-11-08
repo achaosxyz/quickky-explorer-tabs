@@ -229,7 +229,10 @@ nearest first, only if all thirteen complete entry fingerprints and the accessor
 contract match. The version hint comes from the loaded module; absent metadata
 or unmatched contracts reject mutation rather than guess offsets. The dedicated
 [native ABI adaptation design](NATIVE_ABI.md) defines the map catalog, recognition
-family, compatibility limits, and extension procedure.
+family, compatibility limits, and extension procedure. Its
+[source provenance](NATIVE_ABI.md#source-provenance) owns the checked-in DLL/PDB
+source register, accepted image checksums, installed baseline and acquisition
+rules; ignored research output is supporting evidence, not the only record.
 CMake builds `QTabs.exe`,
 `QuickkyExplorerHook.dll`, module static libraries, and synthetic/model test
 executables when testing is enabled. Windows 11 retains the original tab host and
