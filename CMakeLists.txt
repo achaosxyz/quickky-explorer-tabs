@@ -15,18 +15,24 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 foreach(locale IN ITEMS en-US zh-CN)
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/locales/${locale}.json" catalog)
     string(SUBSTRING "${locale}" 0 2 prefix)
-    foreach(section IN ITEMS tray about)
+    foreach(section IN ITEMS tray about compatibility)
         if(section STREQUAL "tray")
-            set(keys startup enableTabs about exit)
-        else()
+            set(keys startup enableTabs about exit compatibility)
+        elseif(section STREQUAL "about")
             set(keys title author version buildTime)
+        else()
+            set(keys title dllVersion status supported unsupported unavailable customTabs note)
         endif()
         foreach(key IN LISTS keys)
             string(JSON text GET "${catalog}" "${section}" "${key}")
             string(REPLACE "\\" "\\\\" text "${text}")
             string(REPLACE "\"" "\\\"" text "${text}")
             string(REPLACE "\n" "\\n" text "${text}")
-            set("${prefix}_${key}" "${text}")
+            if(section STREQUAL "compatibility")
+                set("${prefix}_compat_${key}" "${text}")
+            else()
+                set("${prefix}_${key}" "${text}")
+            endif()
         endforeach()
     endforeach()
 endforeach()
@@ -94,6 +100,60 @@ add_library(quickky_explorer STATIC
     src/explorer/native_frame.cpp
     src/explorer/native_abi.cpp
     src/explorer/native_abi_profiles.cpp
+    src/explorer/abi_profiles/10.0.26100.1.cpp
+    src/explorer/abi_profiles/10.0.22621.5413.cpp
+    src/explorer/abi_profiles/10.0.22621.5331.cpp
+    src/explorer/abi_profiles/10.0.22621.5262.cpp
+    src/explorer/abi_profiles/10.0.22621.3958.cpp
+    src/explorer/abi_profiles/10.0.22621.4541.cpp
+    src/explorer/abi_profiles/10.0.22621.4601.cpp
+    src/explorer/abi_profiles/10.0.22621.4746.cpp
+    src/explorer/abi_profiles/10.0.26100.7309.cpp
+    src/explorer/abi_profiles/10.0.26100.7462.cpp
+    src/explorer/abi_profiles/10.0.26100.7705.cpp
+    src/explorer/abi_profiles/10.0.26100.7824.cpp
+    src/explorer/abi_profiles/10.0.26100.7920.cpp
+    src/explorer/abi_profiles/10.0.26100.8115.cpp
+    src/explorer/abi_profiles/10.0.26100.8328.cpp
+    src/explorer/abi_profiles/10.0.26100.8457.cpp
+    src/explorer/abi_profiles/10.0.26100.8521.cpp
+    src/explorer/abi_profiles/10.0.22621.3672.cpp
+    src/explorer/abi_profiles/10.0.26100.5074.cpp
+    src/explorer/abi_profiles/10.0.26100.6725.cpp
+    src/explorer/abi_profiles/10.0.26100.7019.cpp
+    src/explorer/abi_profiles/10.0.26100.7171.cpp
+    src/explorer/abi_profiles/10.0.22621.5909.cpp
+    src/explorer/abi_profiles/10.0.22621.6197.cpp
+    src/explorer/abi_profiles/10.0.26100.9818.cpp
+    src/explorer/abi_profiles/10.0.26100.9549.cpp
+    src/explorer/abi_profiles/10.0.26100.9278.cpp
+    src/explorer/abi_profiles/10.0.26100.8972.cpp
+    src/explorer/abi_profiles/10.0.26100.8737.cpp
+    src/explorer/abi_profiles/10.0.26100.8655.cpp
+    src/explorer/abi_profiles/10.0.28000.3086.cpp
+    src/explorer/abi_profiles/10.0.28000.2605.cpp
+    src/explorer/abi_profiles/10.0.28000.2525.cpp
+    src/explorer/abi_profiles/10.0.28000.1761.cpp
+    src/explorer/abi_profiles/10.0.26100.4202.cpp
+    src/explorer/abi_profiles/10.0.26100.4768.cpp
+    src/explorer/abi_profiles/10.0.26100.4484.cpp
+    src/explorer/abi_profiles/10.0.26100.2454.cpp
+    src/explorer/abi_profiles/10.0.26100.2605.cpp
+    src/explorer/abi_profiles/10.0.26100.2894.cpp
+    src/explorer/abi_profiles/10.0.26100.3037.cpp
+    src/explorer/abi_profiles/10.0.26100.3323.cpp
+    src/explorer/abi_profiles/10.0.26100.3624.cpp
+    src/explorer/abi_profiles/10.0.26100.3912.cpp
+    src/explorer/abi_profiles/10.0.26100.4061.cpp
+    src/explorer/abi_profiles/10.0.26100.1150.cpp
+    src/explorer/abi_profiles/10.0.26100.1455.cpp
+    src/explorer/abi_profiles/10.0.26100.1591.cpp
+    src/explorer/abi_profiles/10.0.26100.1882.cpp
+    src/explorer/abi_profiles/10.0.26100.2161.cpp
+    src/explorer/abi_profiles/10.0.26100.2314.cpp
+    src/explorer/abi_profiles/10.0.26100.1000.cpp
+    src/explorer/abi_profiles/10.0.26100.712.cpp
+    src/explorer/abi_profiles/10.0.22621.5983.cpp
 )
 target_include_directories(quickky_explorer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(quickky_explorer PUBLIC user32 gdi32 comctl32 ole32 oleaut32 shell32 uuid advapi32 bcrypt psapi)

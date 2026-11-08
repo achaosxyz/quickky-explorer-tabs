@@ -46,7 +46,7 @@ a specific GUID. Enumeration still requires private tab storage: the inspected
 interface has no enumeration method, and registering an event handler does not
 return an initial snapshot. Symbol availability is not an ABI contract.
 
-Compatibility requires both an embedded map for the actual loaded image and a
+Compatibility requires both a validated embedded map for the loaded image and a
 recognized accessor contract, not a file-version string allowlist. Maps are
 organized by component version; CodeView GUID/age and image size select reviewed
 vtables and methods. Several maps can share one accessor rule. The initial
@@ -57,12 +57,17 @@ the three decoded object displacements and four reviewed diagnostic source-line
 constants to change. Unknown function bodies reject
 integration even when their names match. This is a deliberately narrow contract
 family, not a general x64 decoder or a stable Microsoft API.
+The reviewed 22621 family additionally checks its split lookup's complete cold
+loop fragment and backedge. A public-symbol spelling or probe-parser failure
+does not by itself prove that a transfer capability is missing.
 
 Map selection runs on the owning Explorer UI thread. There is no downloader,
 runtime PDB parser, symbol cache, resolver worker, or cross-process ABI descriptor.
-Development-only PDB inspection supplies evidence for new map entries. Missing
-maps or failed validation leave windows ordinary; no nearest-version or shifted-
-RVA fallback is permitted. Maps contain identity and RVAs, not executable code.
+Development-only PDB inspection supplies evidence for new map entries. Images
+without a validated exact or strict fallback map remain ordinary. Unknown identities may try
+same-or-lower version candidates only after all thirteen complete entry
+fingerprints match; shifted-RVA guesses are never permitted. Locator records
+contain identity and RVAs, not executable code.
 Before accessing objects, the target validates image identity, section
 bounds, the accessor contract, both vtables, and method entries. The native
 object/record memory guard accepts only committed readable regions,
@@ -90,12 +95,15 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
-The current embedded map identifies the loaded ExplorerFrame CodeView GUID
-`822A8C93-960A-C7B6-7F6A-87CF48E8CE6F`, age 1 (file version
-`10.0.26100.9949`). This remains the only live-verified image. The catalog accepts
-additional reviewed version files, not arbitrary updates: missing identities,
-unknown rule IDs, changed accessor contracts, or invalid locators fail closed.
-Selection uses the loaded module, not a potentially newer on-disk DLL.
+The exact embedded catalog and accessor families are listed in the
+[native ABI adaptation design](NATIVE_ABI.md).
+Only `10.0.26100.9549` has scoped live evidence;
+the other entries have exact-image/PDB and offline contract checks. Unknown
+identities try same-or-lower numeric versions, nearest first, but must also match
+all thirteen complete entry fingerprints before accessor validation can bind.
+Unknown rule IDs, unfamiliar bodies or invalid locators fail closed. Selection
+and its version hint use the loaded module, not a newer on-disk DLL. See
+[native ABI adaptation](NATIVE_ABI.md) for the full fallback boundary.
 The existing clipping experiment is not the Windows 11 product backend. Windows
 10 layout reservation requires its own validation, not an assumed XAML host.
 The diagnostic clipping experiment defers reentrant region restoration until
@@ -163,7 +171,7 @@ Native snapshot reception, target-side native add, and current-folder `+` use th
 same location policy. An excluded `+` location falls back to native default behavior.
 Keep the final source-removal GUID/PIDL check free of additional naming callouts.
 
-On Windows build 26300 with ExplorerFrame `10.0.26100.9949`, scoped native tests
+On Windows build 26300 with ExplorerFrame `10.0.26100.9549`, scoped native tests
 verify automatic two-window merge, a pre-existing two-tab source transferred one
 GUID at a time, current-folder native `+` and Ctrl+T, and preservation of the
 merged native group on orderly exit. Baseline Explorer roots remain present.

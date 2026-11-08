@@ -296,7 +296,8 @@ int Run(HINSTANCE instance, const Options& options)
                         continue;
                     }
                     if (!enabled) disable();
-                } else if (action == quickky::TrayAction::About) tray.ShowAbout();
+                } else if (action == quickky::TrayAction::Compatibility) tray.ShowCompatibility();
+                else if (action == quickky::TrayAction::About) tray.ShowAbout();
                 else if (action == quickky::TrayAction::Exit) return EXIT_SUCCESS;
             } else {
                 TranslateMessage(&message);

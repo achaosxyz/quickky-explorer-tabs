@@ -46,7 +46,8 @@ std::shared_ptr<NativeFrame> NativeFrame::Bind(HWND root)
     const auto profiles = BuiltinNativeAbiProfiles(profile_count);
     if (!image || !GetModuleInformation(GetCurrentProcess(), reinterpret_cast<HMODULE>(image),
         &information, sizeof(information)) || !SelectNativeAbi(image, information.SizeOfImage,
-        reinterpret_cast<std::uintptr_t>(image), profiles, profile_count, abi, layout)) return {};
+        reinterpret_cast<std::uintptr_t>(image), profiles, profile_count, abi, layout,
+        NativeModuleVersion(reinterpret_cast<HMODULE>(image)))) return {};
     auto object = reinterpret_cast<unsigned char*>(GetWindowLongPtrW(root, 0));
     if (!IsNativeMemoryReadable(object, layout.actions + layout.active + sizeof(void*)) ||
         *reinterpret_cast<void**>(object) != image + abi.window_table ||

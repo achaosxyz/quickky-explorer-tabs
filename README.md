@@ -42,6 +42,7 @@ Right-click the notification-area icon:
 
 - **Start with Windows** — start QTabs when you sign in.
 - **Enable Tabs** — turn automatic window collection on or off.
+- **Compatibility check** — view the Explorer DLL version and support status.
 - **About** — view the author, version, and build information.
 - **Exit** — stop QTabs.
 
@@ -49,9 +50,8 @@ Right-click the notification-area icon:
 
 - Windows x86_64; tested on Windows 10 build 19045 and Windows 11 build 26300.
   Compatibility varies with the Windows and Explorer version.
-- Windows 11 compatibility is checked offline using built-in compatibility maps.
-  The current map covers ExplorerFrame `10.0.26100.9949`; other versions require
-  an updated map. Unsupported windows remain separate.
+- Windows 11 uses built-in compatibility checks. Unsupported Explorer windows
+  remain separate.
 - Up to 128 tabs on Windows 11 or 32 on Windows 10; extra windows remain separate.
 - A new window may appear briefly before collection. Native merging may reset
   file selection and navigation history.

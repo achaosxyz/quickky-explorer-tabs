@@ -1,5 +1,6 @@
 {
   "tray": {
+    "compatibility": "Compatibility check",
     "startup": "Start at sign-in",
     "enableTabs": "Enable Tabs",
     "about": "About",
@@ -10,6 +11,16 @@
     "author": "Author",
     "version": "Version",
     "buildTime": "Build time"
+  },
+  "compatibility": {
+    "title": "QTabs compatibility",
+    "dllVersion": "ExplorerFrame.dll",
+    "status": "Support",
+    "supported": "Supported (native tabs)",
+    "unsupported": "Not supported by the current native adapters",
+    "unavailable": "Could not inspect ExplorerFrame.dll",
+    "customTabs": "Supported (Windows 10 custom tabs)",
+    "note": "Read-only DLL compatibility check; this does not test a live Explorer transfer."
   },
   "settings": {
     "title": "Settings",

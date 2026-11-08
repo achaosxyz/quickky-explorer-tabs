@@ -42,6 +42,13 @@ count deferred enumerations with controlled event/callback delivery, separate
 from eventual real WinEvent delivery. They do not infer delivery completion or
 isolation from a fixed-duration message pump.
 
+For each locally archived supported native image, run
+`QuickkyNativeAbiTests.exe --image PATH` in both configurations. Run `--unsupported-image PATH` for the
+excluded compact-accessor images and images confirmed to lack transfer interfaces.
+These checks inspect image resources, catalog selection, strict fallback, layout
+and malformed-code rejection in the fixture process. They do not attach to
+Explorer or establish live transfer compatibility.
+
 Read-only snapshot/observation may run on the development desktop. Confirm the
 output contains no captions or folder paths, diagnostic managed count remains zero,
 and no Explorer window is modified. Resident/duplicate/stop tests must first

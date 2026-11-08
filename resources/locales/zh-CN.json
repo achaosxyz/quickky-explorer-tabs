@@ -1,5 +1,6 @@
 {
   "tray": {
+    "compatibility": "兼容性检测",
     "startup": "开机自启动",
     "enableTabs": "启用Tabs",
     "about": "关于",
@@ -10,6 +11,16 @@
     "author": "作者",
     "version": "版本",
     "buildTime": "构建时间"
+  },
+  "compatibility": {
+    "title": "QTabs 兼容性检测",
+    "dllVersion": "ExplorerFrame.dll",
+    "status": "支持状态",
+    "supported": "支持（原生标签）",
+    "unsupported": "当前原生适配暂不支持",
+    "unavailable": "无法检测 ExplorerFrame.dll",
+    "customTabs": "支持（Windows 10 自绘标签）",
+    "note": "仅只读检查 DLL 兼容性，不验证实际 Explorer 窗口迁移效果。"
   },
   "settings": {
     "title": "设置",

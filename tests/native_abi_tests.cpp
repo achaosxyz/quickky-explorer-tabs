@@ -1,10 +1,11 @@
 #include "explorer/native_abi.h"
-#include "explorer/abi_profiles/10.0.26100.9949.h"
 
 #include <algorithm>
 #include <cstring>
+#include <cwchar>
 #include <iostream>
 #include <psapi.h>
+#include <winver.h>
 #include <vector>
 
 namespace {
@@ -19,7 +20,7 @@ template<class T> void Write(unsigned char* p, T value)
 { std::memcpy(p, &value, sizeof(value)); }
 
 const quickky::NativeAbiDescriptor& BaselineAbi()
-{ return quickky::kExplorerFrame_10_0_26100_9949.descriptor; }
+{ return quickky::ExplorerFrameAbi26100_9549().descriptor; }
 
 // Expand an OS file into a private RVA-addressed buffer. This fixture loader
 // never executes image code or requires symbols, Explorer attachment, or a worker.
@@ -128,6 +129,200 @@ void CheckCatalogSelection(const std::vector<unsigned char>& original)
         "matching GUID and age do not override an image-size mismatch");
     Check(!quickky::SelectNativeAbi(original.data(), original.size(), 0, nullptr, 0, selected, layout) &&
         !selected.accessor_rule && !layout.actions, "empty catalog fails closed");
+}
+
+void CheckVersionResource()
+{
+    constexpr wchar_t key[] = L"VS_VERSION_INFO";
+    constexpr auto offset = (6 + sizeof(key) + 3) & ~std::size_t(3);
+    std::vector<unsigned char> bytes(offset + sizeof(VS_FIXEDFILEINFO));
+    Write<WORD>(bytes.data(), static_cast<WORD>(bytes.size()));
+    Write<WORD>(bytes.data() + 2, sizeof(VS_FIXEDFILEINFO));
+    std::memcpy(bytes.data() + 6, key, sizeof(key));
+    VS_FIXEDFILEINFO info{};
+    info.dwSignature = 0xfeef04bd;
+    info.dwStrucVersion = 0x00010000;
+    info.dwFileVersionMS = (10u << 16);
+    info.dwFileVersionLS = (26100u << 16) | 9549;
+    Write(bytes.data() + offset, info);
+    const auto version = quickky::PackNativeFileVersion(10, 0, 26100, 9549);
+    Check(quickky::NativeFileVersionResource(bytes.data(), bytes.size()) == version,
+        "read the fixed four-word component version");
+    Check(!quickky::NativeFileVersionResource(nullptr, bytes.size()) &&
+        !quickky::NativeModuleVersion(nullptr), "missing version metadata disables fallback");
+    for (std::size_t size = 0; size < bytes.size(); ++size)
+        Check(!quickky::NativeFileVersionResource(bytes.data(), size), "reject truncated version values");
+    for (const auto site : {0u, 2u, 4u, 6u, static_cast<unsigned>(offset),
+        static_cast<unsigned>(offset + 4)}) {
+        auto changed = bytes;
+        changed[site] ^= 0x80;
+        Check(!quickky::NativeFileVersionResource(changed.data(), changed.size()),
+            "reject malformed version root, key, type, signature and structure version");
+    }
+}
+
+void CheckVersionMap(const std::vector<unsigned char>& original, const quickky::NativeAbiProfile& profile)
+{
+    std::size_t count = 0;
+    const auto catalog = quickky::BuiltinNativeAbiProfiles(count);
+    quickky::NativeAbiDescriptor selected;
+    quickky::NativeAbiLayout layout;
+    const quickky::NativeAbiProfile* matched = nullptr;
+    Check(quickky::SelectNativeAbi(original.data(), original.size(), 0, catalog, count,
+        selected, layout, 0, &matched) && matched == &profile,
+        "each exact image selects its independently registered version unit");
+    const bool older = profile.descriptor.accessor_rule == 2;
+    const bool newer = profile.descriptor.accessor_rule >= 3;
+    // Exact-image observations are test evidence, not production layout hints.
+    // Even versions sharing an accessor rule can have different object fields.
+    struct Expected { const char* version; DWORD tabs; DWORD active; };
+    constexpr Expected observations[]{
+        {"10.0.22621.5983", 0x1a0, 0x1b8},
+        {"10.0.26100.1000", 0x198, 0x1b0},
+        {"10.0.26100.712", 0x198, 0x1b0},
+        {"10.0.26100.1150", 0x198, 0x1b0},
+        {"10.0.26100.1455", 0x198, 0x1b0},
+        {"10.0.26100.1591", 0x198, 0x1b0},
+        {"10.0.26100.1882", 0x198, 0x1b0},
+        {"10.0.26100.2161", 0x198, 0x1b0},
+        {"10.0.26100.2314", 0x198, 0x1b0},
+        {"10.0.26100.2454", 0x198, 0x1b0},
+        {"10.0.26100.2605", 0x198, 0x1b0},
+        {"10.0.26100.2894", 0x198, 0x1b0},
+        {"10.0.26100.3037", 0x198, 0x1b0},
+        {"10.0.26100.3323", 0x198, 0x1b0},
+        {"10.0.26100.3624", 0x198, 0x1b0},
+        {"10.0.26100.3912", 0x198, 0x1b0},
+        {"10.0.26100.4061", 0x198, 0x1b0},
+        {"10.0.26100.4484", 0x198, 0x1b0},
+        {"10.0.26100.4202", 0x198, 0x1b0},
+        {"10.0.26100.4768", 0x198, 0x1b0},
+        {"10.0.22621.3958", 0x1a0, 0x1b8},
+        {"10.0.22621.4541", 0x1a0, 0x1b8},
+        {"10.0.22621.4601", 0x1a0, 0x1b8},
+        {"10.0.22621.4746", 0x1a0, 0x1b8},
+        {"10.0.26100.7309", 0x1a8, 0x1c0},
+        {"10.0.26100.7462", 0x1a8, 0x1c0},
+        {"10.0.26100.7705", 0x1a8, 0x1c0},
+        {"10.0.26100.7824", 0x1a8, 0x1c0},
+        {"10.0.26100.7920", 0x1a8, 0x1c0},
+        {"10.0.26100.8115", 0x1a8, 0x1c0},
+        {"10.0.26100.8328", 0x208, 0x220},
+        {"10.0.26100.8457", 0x208, 0x220},
+        {"10.0.26100.8521", 0x208, 0x220},
+        {"10.0.22621.3672", 0x1a0, 0x1b8},
+        {"10.0.22621.5909", 0x1a0, 0x1b8},
+        {"10.0.22621.6197", 0x1a0, 0x1b8},
+        {"10.0.26100.5074", 0x198, 0x1b0},
+        {"10.0.26100.6725", 0x1a0, 0x1b8},
+        {"10.0.26100.7019", 0x1a0, 0x1b8},
+        {"10.0.26100.7171", 0x1a0, 0x1b8},
+        {"10.0.22621.5413", 0x1a0, 0x1b8},
+        {"10.0.22621.5331", 0x1a0, 0x1b8},
+        {"10.0.22621.5262", 0x1a0, 0x1b8},
+        {"10.0.26100.1", 0x198, 0x1b0},
+        {"10.0.26100.8655", 0x208, 0x220},
+        {"10.0.26100.8737", 0x1308, 0x1320},
+        {"10.0.26100.8972", 0x1308, 0x1320},
+        {"10.0.26100.9278", 0x1308, 0x1320},
+        {"10.0.26100.9549", 0x3590, 0x35a8},
+        {"10.0.26100.9818", 0x3590, 0x35a8},
+        {"10.0.28000.2525", 0x258, 0x270},
+        {"10.0.28000.1761", 0x1a8, 0x1c0},
+        {"10.0.28000.2605", 0x1308, 0x1320},
+        {"10.0.28000.3086", 0x1308, 0x1320}};
+    const Expected* expected = nullptr;
+    for (const auto& entry : observations)
+        if (std::strcmp(entry.version, profile.version) == 0) expected = &entry;
+    Check(expected != nullptr, "registered image has independently inspected layout evidence");
+    if (!expected) return;
+    const auto expected_tabs = expected->tabs;
+    const auto expected_active = expected->active;
+    Check(layout.actions == 0xe8 && layout.tabs == expected_tabs && layout.active == expected_active,
+        "derive the layout for this real image");
+
+    // Only the identity is synthetic. These cases prove gating, not live support
+    // for a future Windows installation or transitive private-call behavior.
+    auto image = original;
+    auto identity = profile.descriptor.image;
+    identity.pdb.Data1 ^= 0x100;
+    ChangeIdentity(image, identity);
+    const auto select = [&](const std::vector<unsigned char>& bytes,
+        const quickky::NativeAbiProfile* maps, std::size_t size, std::uint64_t version) {
+        return quickky::SelectNativeAbi(bytes.data(), bytes.size(), 0, maps, size,
+            selected, layout, version, &matched);
+    };
+    Check(!select(image, catalog, count, 0) && !matched && !layout.actions && !selected.accessor_rule,
+        "unknown identity without version metadata clears outputs and refuses fallback");
+    Check(!select(image, &profile, 1, profile.file_version - 1), "never try a newer version map");
+    Check(select(image, catalog, count, profile.file_version) && matched == &profile &&
+        InlineIsEqualGUID(selected.image.pdb, identity.pdb),
+        "same-version unknown identity requires all complete entry fingerprints");
+    Check(select(image, catalog, count, profile.file_version + 1) && matched == &profile,
+        "nearest-lower map binds after complete read-only validation");
+
+    quickky::NativeAbiProfile candidates[]{profile, profile, profile};
+    candidates[0].file_version -= 1;
+    candidates[2].file_version += 1;
+    candidates[2].descriptor.methods[0] = MAXDWORD;
+    Check(select(image, candidates, 3, profile.file_version + 1) && matched == candidates + 1,
+        "skip a broken nearest map, prefer the closest valid lower map regardless of registration order");
+    candidates[1].descriptor.accessor_rule = MAXDWORD;
+    Check(select(image, candidates, 3, profile.file_version + 1) && matched == candidates,
+        "a fingerprint match with an invalid accessor rule cannot block another validated candidate");
+
+    for (unsigned slot = 0; slot < 13; ++slot) {
+        auto changed = image;
+        const auto& entry = profile.entry_fingerprints[slot];
+        changed[profile.descriptor.methods[slot] + entry.length - 1] ^= 1;
+        Check(!select(changed, &profile, 1, profile.file_version + 1) && !matched &&
+            !layout.actions && !selected.accessor_rule, "fallback rejects damage to every typed entry");
+    }
+    for (const auto site : profile.data_diagnostics) {
+        auto changed = image;
+        Write<DWORD>(changed.data() + profile.descriptor.methods[8] + site, MAXDWORD);
+        Check(select(changed, &profile, 1, profile.file_version + 1),
+            "fallback permits reviewed diagnostic source-line changes");
+        changed[profile.descriptor.methods[8] + site - 1] ^= 1;
+        Check(!select(changed, &profile, 1, profile.file_version + 1),
+            "fallback does not mask diagnostic instruction opcodes");
+    }
+    auto changed = image;
+    const auto active_operand = profile.descriptor.accessor_rule == 5 ? 0x117u :
+        profile.descriptor.accessor_rule == 4 ? 0xa2u :
+        older ? 0xacu : newer ? 0x8eu : 0x9bu;
+    const auto active_site = profile.descriptor.methods[8] + active_operand;
+    Write<DWORD>(changed.data() + active_site, expected_active + 8);
+    auto rebound = profile.descriptor;
+    rebound.image = identity;
+    Check(Valid(changed, rebound) && !select(changed, &profile, 1, profile.file_version + 1),
+        "fallback requires unchanged fields even when the accessor family could derive them");
+    changed = image;
+    Write<DWORD>(changed.data() + profile.descriptor.methods[8] +
+        (profile.descriptor.accessor_rule == 5 ? 0x86u : newer ? 0x4au : 0x60u), 0);
+    Check(!select(changed, &profile, 1, profile.file_version + 1), "fallback rejects redirected relative calls");
+    candidates[0] = profile;
+    candidates[0].descriptor.accessor_rule = MAXDWORD;
+    candidates[1] = profile;
+    candidates[1].descriptor.image = identity;
+    Check(!select(original, candidates, 2, profile.file_version + 1),
+        "a recognized identity with a failed contract cannot escape through unknown-identity fallback");
+    if (profile.descriptor.accessor_rule == 5) {
+        const auto lookup = profile.descriptor.lookup;
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, original.data() + lookup + 0x41, sizeof(displacement));
+        const auto cold = static_cast<std::uint32_t>(lookup + 0x45 + displacement);
+        changed = original;
+        changed[cold + 3] = 0x20;
+        Check(!Valid(changed, profile.descriptor), "split lookup rejects a changed record stride");
+        changed = original;
+        changed[cold + 5] ^= 1;
+        Check(!Valid(changed, profile.descriptor), "split lookup rejects a redirected cold backedge");
+        changed = original;
+        changed[lookup + 0x41] ^= 1;
+        Check(!Valid(changed, profile.descriptor), "split lookup rejects an unrecognized cold destination");
+    }
+    std::cout << "Version map and conservative fallback exercised: " << profile.version << '\n';
 }
 
 void RejectMalformedImages()
@@ -359,12 +554,14 @@ void CheckVerifiedImage(const std::vector<unsigned char>& original)
 }
 } // namespace
 
-int wmain(int argc, wchar_t**)
+int wmain(int argc, wchar_t** argv)
 {
-    if (argc != 1) return 160;
+    const bool expect_unsupported = argc == 3 && !std::wcscmp(argv[1], L"--unsupported-image");
+    if (argc != 1 && (argc != 3 || (!expect_unsupported && std::wcscmp(argv[1], L"--image")))) return 160;
     RejectMalformedImages();
     CheckImageIdentity();
     CheckNativeMemory();
+    CheckVersionResource();
     std::size_t count = 0;
     const auto catalog = quickky::BuiltinNativeAbiProfiles(count);
     Check(catalog && count && catalog[0].version && *catalog[0].version,
@@ -372,40 +569,93 @@ int wmain(int argc, wchar_t**)
     wchar_t system[MAX_PATH + 1]{};
     const auto length = GetSystemDirectoryW(system, MAX_PATH + 1);
     if (!length || length > MAX_PATH) return 1;
-    const auto path = std::wstring(system) + L"\\ExplorerFrame.dll";
+    const auto path = argc == 3 ? std::wstring(argv[2]) : std::wstring(system) + L"\\ExplorerFrame.dll";
     std::vector<unsigned char> image;
     Check(LoadImage(path, image), "read system image without loading/executing it");
     if (image.empty()) return 1;
     quickky::NativeImageIdentity identity;
     Check(quickky::InspectNativeImage(image.data(), image.size(), identity), "inspect actual image identity");
+    const quickky::NativeAbiProfile* registered = nullptr;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& candidate = catalog[i].descriptor.image;
+        if (InlineIsEqualGUID(identity.pdb, candidate.pdb) && identity.age == candidate.age &&
+            identity.size == candidate.size) registered = catalog + i;
+    }
+    if (argc == 3 && !expect_unsupported)
+        Check(registered != nullptr, "explicit image fixture has a reviewed version map");
+    const auto previous_module = GetModuleHandleW(L"ExplorerFrame.dll");
+    const auto report = quickky::InspectNativeAbiFile(path.c_str());
+    Check(report.inspected && report.file_version != 0,
+        "installed-file diagnostic reads the fixed resource without DLL initialization");
+    Check(GetModuleHandleW(L"ExplorerFrame.dll") == previous_module,
+        "image-resource diagnostic does not register a resolvable executable DLL");
+    if (registered) Check(report.supported && report.file_version == registered->file_version,
+        "installed-file diagnostic recognizes the reviewed version and code contract");
+    const auto missing = quickky::InspectNativeAbiFile((path + L".qtabs-not-present").c_str());
+    Check(!missing.inspected && !missing.supported && !missing.file_version,
+        "missing installed file is an inspection failure, not a compatibility result");
+    Check(!quickky::InspectNativeAbiFile(nullptr).inspected,
+        "null diagnostic path fails without loading anything");
+    if (expect_unsupported) {
+        quickky::NativeAbiDescriptor selected;
+        quickky::NativeAbiLayout layout;
+        Check(!registered && !report.supported &&
+            !quickky::SelectNativeAbi(image.data(), image.size(), 0, catalog, count,
+                selected, layout, report.file_version) && !selected.accessor_rule && !layout.actions,
+            "excluded accessor shapes and missing transfer interfaces remain unsupported");
+        std::cout << "Unsupported-image failures: " << failures << '\n';
+        return failures ? 1 : 0;
+    }
+    if (registered) {
+        CheckVersionMap(image, *registered);
+        // Check loader relocation and the loaded resource in this isolated
+        // process. Do not initialize the image, attach to Explorer or call it.
+        // Occupy the preferred address so the ASLR regression cannot silently
+        // pass without exercising a relocated image on an otherwise empty host.
+        const auto preferred = static_cast<std::uintptr_t>(Headers(image)->OptionalHeader.ImageBase);
+        const auto reservation = VirtualAlloc(reinterpret_cast<void*>(preferred), 1, MEM_RESERVE, PAGE_NOACCESS);
+        const auto module = LoadLibraryExW(path.c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES);
+        MODULEINFO information{};
+        quickky::NativeAbiDescriptor selected;
+        quickky::NativeAbiLayout loaded_layout;
+        const auto version = quickky::NativeModuleVersion(module);
+        if (version != registered->file_version)
+            std::cerr << "Loaded version: " << std::hex << version << ", map version: "
+                << registered->file_version << std::dec << '\n';
+        Check(version == registered->file_version, "read version metadata from the actual loaded module");
+        Check(module && GetModuleInformation(GetCurrentProcess(), module, &information, sizeof(information)) &&
+            quickky::SelectNativeAbi(static_cast<unsigned char*>(information.lpBaseOfDll), information.SizeOfImage,
+                reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll), catalog, count, selected,
+                loaded_layout, version), "validate actual loader relocation without initialization or native calls");
+        if (module && information.lpBaseOfDll) {
+            Check(reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll) != preferred,
+                "exercise diagnostic reuse with a genuinely relocated module");
+            const auto reused = quickky::InspectNativeAbiFile(path.c_str());
+            Check(reused.inspected && reused.supported && reused.file_version == version,
+                "diagnostic handles an already-loaded ASLR image without preferred-base false negatives");
+            auto fallback = *registered;
+            fallback.descriptor.image.pdb.Data1 ^= 0x100;
+            Check(quickky::SelectNativeAbi(static_cast<unsigned char*>(information.lpBaseOfDll),
+                information.SizeOfImage, reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll),
+                &fallback, 1, selected, loaded_layout, version),
+                "complete fallback fingerprints also match the actual ASLR-relocated image");
+        }
+        if (module) FreeLibrary(module);
+        if (reservation) Check(VirtualFree(reservation, 0, MEM_RELEASE) != FALSE,
+            "release the test-owned preferred-base reservation");
+    }
     const auto& offline = BaselineAbi();
     if (InlineIsEqualGUID(identity.pdb, offline.image.pdb) && identity.age == offline.image.age) {
         CheckCatalogSelection(image);
         CheckVerifiedImage(image);
-        // This isolated test process never calls into or reuses the uninitialized
-        // module. Check loader relocation only; do not run DLL initialization.
-        const auto module = LoadLibraryExW(path.c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES);
-        MODULEINFO information{};
-        quickky::NativeAbiLayout loaded_layout;
-        Check(module && GetModuleInformation(GetCurrentProcess(), module, &information, sizeof(information)) &&
-            quickky::ValidateNativeAbi(static_cast<unsigned char*>(information.lpBaseOfDll), information.SizeOfImage,
-                reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll), offline, loaded_layout),
-            "validate actual loader relocation without DLL initialization or native calls");
-        if (module) FreeLibrary(module);
         std::cout << "Verified-image layout and relocation cases exercised.\n";
     } else {
         Check(!Valid(image, offline), "unknown host cannot use the offline descriptor");
         quickky::NativeAbiDescriptor selected;
         quickky::NativeAbiLayout layout;
-        bool registered = false;
-        for (std::size_t i = 0; i < count; ++i) {
-            const auto& candidate = catalog[i].descriptor.image;
-            if (InlineIsEqualGUID(identity.pdb, candidate.pdb) && identity.age == candidate.age &&
-                identity.size == candidate.size) registered = true;
-        }
         if (!registered) Check(!quickky::SelectNativeAbi(image.data(), image.size(), 0, catalog, count, selected, layout),
             "an unregistered host cannot use a built-in map");
-        std::cout << "Host differs from offline fixture; positive accessor cases unavailable.\n";
+        std::cout << "Baseline-only mutation cases skipped for this image.\n";
     }
     std::cout << "Native ABI failures: " << failures << '\n';
     return failures ? 1 : 0;

@@ -19,8 +19,9 @@ must remain explicit; native appearance is not evidence of state preservation.
 This is an early preview, not complete native-tab replacement or general
 Windows 10/11 compatibility. Windows 11 uses version-organized built-in maps and
 reusable accessor rules described in [native ABI adaptation](NATIVE_ABI.md).
-Only the original image has live acceptance; missing maps or unknown contracts
-leave windows ordinary. Runtime symbol loading and downloads are not used.
+Only the original image has live acceptance; images without a validated exact map
+or strict fallback leave windows ordinary. Runtime symbol loading and downloads
+are not used.
 Windows 10 build 19045 has scoped live acceptance for custom capture, current-folder
 creation, maximized switching, minimize/restore, tray actions, and recovery.
 Other layouts/builds remain unverified.
@@ -80,7 +81,11 @@ boundary. Exact supported OS builds are not yet verified.
 
 The application owns a notification-area icon using the repository's `logo.ico`,
 not an independent visible window. Its localized context menu contains exactly
-Start at sign-in, Enable Tabs, About, and Exit. Normal launch starts with tabs disabled
+Start at sign-in, Enable Tabs, Compatibility check, About, and Exit. The explicitly
+requested compatibility dialog reports the checked ExplorerFrame fixed binary
+version and a read-only built-in ABI check; it does not exercise a live transfer.
+Windows 10 reports the custom-tab backend separately from native ABI support.
+Normal launch starts with tabs disabled
 unless the user previously enabled them. Enabling tabs composes the integration
 controller; disabling tabs or exiting restores managed windows first. The
 explicit test-root mode always restricts capture to its root and never changes
@@ -211,12 +216,18 @@ selected. The Windows 11 adapter uses Explorer's private tab-actions interface;
 versioned maps compiled into the integration DLL locate reviewed entry points.
 CodeView GUID/age select a map for the actual loaded image; a version string alone
 never authorizes calls. The image must have one valid, unambiguous CodeView record.
-Reusable accessor rules validate implementation and derive object displacements;
+The exact version catalog and its verification boundaries are maintained in
+[native ABI adaptation](NATIVE_ABI.md). Reusable accessor rules validate
+implementation and derive object displacements;
+split lookup implementations must also validate their out-of-line loop fragment
+and its backedge before their storage layout can be used;
 only explicitly reviewed relocation, displacement, and diagnostic metadata
 operands are normalized. Native storage must be in committed readable memory,
 not execute-only or guarded pages. There is no download, runtime PDB parser, symbol
-cache, or resolver worker. Missing maps or unknown contracts reject mutation
-rather than guess offsets. The dedicated
+cache, or resolver worker. Unknown identities may try same-or-lower versions,
+nearest first, only if all thirteen complete entry fingerprints and the accessor
+contract match. The version hint comes from the loaded module; absent metadata
+or unmatched contracts reject mutation rather than guess offsets. The dedicated
 [native ABI adaptation design](NATIVE_ABI.md) defines the map catalog, recognition
 family, compatibility limits, and extension procedure.
 CMake builds `QTabs.exe`,
@@ -266,7 +277,9 @@ src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
 src/explorer/{native_tab_guard,folder_location,native_frame,native_abi}.{h,cpp}
 src/explorer/native_abi_profiles.cpp
-src/explorer/abi_profiles/{profile,10.0.26100.9949}.h
+src/explorer/native_abi_internal.h
+src/explorer/abi_profiles/profile.h
+src/explorer/abi_profiles/<VERSION>.cpp
 src/chrome/tab_strip.{h,cpp}
 src/settings/preferences.{h,cpp}
 src/common/{window_identity,hook_protocol}.h

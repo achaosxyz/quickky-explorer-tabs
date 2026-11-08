@@ -63,8 +63,17 @@ those application-owned popups so orderly restoration can finish.
 ## Composition and commands
 
 `TrayIcon` owns notification registration, taskbar recreation, localized popup
-presentation, the explicitly requested About dialog, and icon cleanup. The four
-actions are startup, tabs enablement, About, and exit. About displays the author,
+presentation, explicitly requested informational dialogs, and icon cleanup. Its
+actions are startup, tabs enablement, compatibility check, About, and exit.
+Compatibility maps System32 ExplorerFrame as an image resource, or retains an
+already-loaded module returned by Windows: it never requests executable loading,
+runs an entry point, resolves imports, or performs private calls.
+It reports the fixed binary version and the existing catalog/accessor check;
+Windows 10 instead identifies its custom-tab backend. An inspection error is
+distinct from an unsupported native ABI. The version describes the actual checked
+mapping, not a running Explorer's possibly different module or transfer behavior.
+The modal window participates in the existing popup cancellation on shutdown.
+About displays the author,
 email, version, UTC build timestamp, and the full GitHub URL as a clickable link.
 It opens a browser only when that link is activated.
 

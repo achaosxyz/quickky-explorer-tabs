@@ -1,5 +1,6 @@
 #include "app/tray_icon.h"
 #include "settings/preferences.h"
+#include "explorer/native_abi.h"
 #include "build_metadata.h"
 #include "resource.h"
 
@@ -86,6 +87,7 @@ TrayAction TrayIcon::ShowMenu(bool tabs_enabled)
     AppendMenuW(menu, MF_STRING | (tabs_enabled ? MF_CHECKED : MF_UNCHECKED),
         static_cast<UINT>(TrayAction::Tabs), text.enable_tabs);
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, static_cast<UINT>(TrayAction::Compatibility), text.compatibility);
     AppendMenuW(menu, MF_STRING, static_cast<UINT>(TrayAction::About), text.about);
     AppendMenuW(menu, MF_STRING, static_cast<UINT>(TrayAction::Exit), text.exit);
     POINT position{};
@@ -112,24 +114,63 @@ void TrayIcon::ShowAbout()
     dialog.pszMainInstruction = L"QTabs";
     dialog.pszContent = content.c_str();
     dialog.hMainIcon = icon_;
-    dialog.pfCallback = AboutProcedure;
+    dialog.pfCallback = DialogProcedure;
     dialog.lpCallbackData = reinterpret_cast<LONG_PTR>(this);
     TaskDialogIndirect(&dialog, nullptr, nullptr, nullptr);
 }
 
-HRESULT CALLBACK TrayIcon::AboutProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam,
+void TrayIcon::ShowCompatibility()
+{
+    const auto& text = CurrentTrayStrings();
+    NativeAbiFileStatus status;
+    wchar_t directory[MAX_PATH]{};
+    const auto length = GetSystemDirectoryW(directory, _countof(directory));
+    if (length && length < _countof(directory)) {
+        const auto path = std::wstring(directory, length) + L"\\ExplorerFrame.dll";
+        status = InspectNativeAbiFile(path.c_str());
+    }
+    OSVERSIONINFOEXW os{sizeof(os)};
+    os.dwBuildNumber = 22000;
+    const bool native = VerifyVersionInfoW(&os, VER_BUILDNUMBER,
+        VerSetConditionMask(0, VER_BUILDNUMBER, VER_GREATER_EQUAL)) != FALSE;
+    const auto support = !status.inspected ? text.compatibility_unavailable :
+        !native ? text.custom_tabs : status.supported ? text.native_supported : text.native_unsupported;
+    std::wstring version = L"\u2014";
+    if (status.file_version) {
+        version = std::to_wstring(status.file_version >> 48) + L"." +
+            std::to_wstring((status.file_version >> 32) & 0xffff) + L"." +
+            std::to_wstring((status.file_version >> 16) & 0xffff) + L"." +
+            std::to_wstring(status.file_version & 0xffff);
+    }
+    const auto content = std::wstring(text.dll_version) + L": " + version + L"\n\n" +
+        text.compatibility_status + L": " + support;
+    TASKDIALOGCONFIG dialog{sizeof(dialog)};
+    dialog.hwndParent = window_;
+    dialog.dwFlags = TDF_USE_HICON_MAIN | TDF_ALLOW_DIALOG_CANCELLATION;
+    dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    dialog.pszWindowTitle = text.compatibility_title;
+    dialog.pszMainInstruction = L"QTabs";
+    dialog.pszContent = content.c_str();
+    dialog.pszFooter = text.compatibility_note;
+    dialog.hMainIcon = icon_;
+    dialog.pfCallback = DialogProcedure;
+    dialog.lpCallbackData = reinterpret_cast<LONG_PTR>(this);
+    TaskDialogIndirect(&dialog, nullptr, nullptr, nullptr);
+}
+
+HRESULT CALLBACK TrayIcon::DialogProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam,
                                          LONG_PTR data)
 {
     auto* self = reinterpret_cast<TrayIcon*>(data);
-    if (message == TDN_CREATED) self->about_ = window;
-    if (message == TDN_DESTROYED) self->about_ = nullptr;
+    if (message == TDN_CREATED) self->dialog_ = window;
+    if (message == TDN_DESTROYED) self->dialog_ = nullptr;
     return AboutCallback(window, message, wparam, lparam, data);
 }
 
 void TrayIcon::CancelPopups()
 {
     EndMenu();
-    if (about_) SendMessageW(about_, TDM_CLICK_BUTTON, IDCLOSE, 0);
+    if (dialog_) SendMessageW(dialog_, TDM_CLICK_BUTTON, IDCLOSE, 0);
 }
 
 } // namespace quickky

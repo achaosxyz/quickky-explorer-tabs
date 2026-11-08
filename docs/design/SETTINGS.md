@@ -3,15 +3,17 @@
 ## Status
 
 `preferences` implements per-user startup, the saved tabs setting, and locale
-resolution. English/Simplified Chinese catalogs supply the tray and About dialog
+resolution. English/Simplified Chinese catalogs supply the tray, About and compatibility dialogs
 through build-generated native strings. A separate management page and a runtime
 language picker are not implemented. See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility
 
 `preferences` owns the per-user startup registration, persisted tabs-enabled
-choice, and locale selection. The tray uses four catalog keys under `tray`:
-`startup`, `enableTabs`, `about`, and `exit`; About field labels are under `about`.
+choice, and locale selection. The tray uses five catalog keys under `tray`:
+`startup`, `enableTabs`, `compatibility`, `about`, and `exit`; dialog field labels
+are under `about` and `compatibility`. The latter distinguishes native support,
+unsupported ABI, inspection failure, and the Windows 10 custom-tab backend.
 CMake embeds these UTF-8 catalog values into
 a generated native header; no JSON parser or third-party dependency is required.
 Startup changes touch only `QTabs` in the current user's `Run` key.
