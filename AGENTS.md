@@ -28,7 +28,8 @@ or complete native-tab replacement.
    recognizes one of five built-in accessor families plus reviewed complete-entry
    code variants, discovering actual tables without fixed version/RVA selection
    or symbol downloads. Versioned maps are offline test oracles only. Confirm destination GUID/PIDL before
-   deleting the revalidated source GUID, never a whole source frame. Native
+   deleting the revalidated source GUID, never a whole source frame. Reveal a
+   minimized main frame only after confirmed native transfer. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.
 4. Support `--stop`, read-only `--snapshot`, bounded `--observe-ms N`, and a

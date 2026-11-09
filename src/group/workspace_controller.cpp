@@ -258,7 +258,13 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
             // Native add/remove can finish after timeout; failure is not rollback.
             // Quarantine instead of inferring source state or repeating the add.
             quarantined_[item.first] = source.window().window;
-        } else native_transferred_ = true;
+        } else {
+            native_transferred_ = true;
+            // Reveal only after both destination confirmation and source removal.
+            // Presentation failure must never repeat this completed transfer.
+            if (IsIconic(reinterpret_cast<HWND>(main_)) && !destination.RevealNative(created))
+                OutputDebugStringA("QTabs: transferred tab confirmed, minimized destination reveal failed\n");
+        }
         // One mutation per reconciliation bounds work and lets native lifecycle
         // settle before handling another tab in a multi-tab source frame.
         break;

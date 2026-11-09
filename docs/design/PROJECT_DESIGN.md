@@ -344,7 +344,7 @@ adds these concrete contracts:
   readiness retries and confirmed native-transfer continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window. A version-6 bounded
+  Quickky changes without closing the user's Explorer window. A version-7 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
   a per-window lifetime property and cancellation event protect local recovery.
   New input appends a bounded, validated PIDL snapshot; no native pointers cross
@@ -457,8 +457,8 @@ The attachment flow is:
 
 1. Discover an eligible Explorer folder window and validate its identity.
 2. Choose the platform backend. Windows 10 prepares the nonce-bound custom-tab
-   attachment and revalidates before committing presentation. Windows 11 selects
-   and validates a built-in native ABI map on the target UI thread, then binds
+   attachment and revalidates before committing presentation. Windows 11
+   recognizes a native ABI code family on the target UI thread, then binds
    a native-only bridge, validates the ABI capability and folder boundary, and
    retains native presentation. Neither path admits a destroyed or reused HWND.
 3. Commit the Quickky tab only after attachment succeeds; keep or restore the
@@ -466,9 +466,14 @@ The attachment flow is:
 4. Route Windows 10 Quickky actions through group policy and the target bridge.
    Windows 11 reads the active native tab, creates it through the destination's
    tab-drop action, confirms the destination GUID/PIDL, and removes only that
-   source tab after source revalidation, verifying its absence. Native merges are
-   not split back into separate windows
-   on disable/exit: the OS owns the resulting tabs.
+   source tab after source revalidation, verifying its absence. After confirmation,
+   a minimized destination receives a nonce-bound reveal command: revalidate/select
+   the created GUID and restore the destination on its owning UI thread, preserving
+   its pre-minimize placement, then reconfirming the selected GUID before requesting
+   foreground activation under Windows policy. Failed/uncertain transfers do not
+   reveal it; a reveal failure does not repeat or roll back an already confirmed
+   transfer. Native merges are not split back into separate windows on disable/exit:
+   the OS owns the resulting tabs.
    Close is an authenticated target-thread command, never an unqualified
    `WM_CLOSE` posted to a cached HWND. Retire a closed or failed target before
    publishing the remaining group.

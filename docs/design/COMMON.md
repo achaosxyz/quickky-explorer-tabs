@@ -34,12 +34,12 @@ such as tab identity, attachment identity, and cross-process request/result data
 
 ## Boundary
 
-`hook_protocol.h` defines the version-6 `WM_COPYDATA` header shared
+`hook_protocol.h` defines the version-7 `WM_COPYDATA` header shared
 by controller, scoped workspace DLL, and manual guard probe. It carries target
 HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
 labels, and explicit presentation/input commands. Payloads are value-only.
 Native preparation carries no ABI descriptor, RVAs, or function pointers. The
-target selects a built-in map and derives the validated layout locally in
+target recognizes a built-in code family and derives the validated layout locally in
 `explorer`, not in this shared-data header.
 See [native ABI adaptation](NATIVE_ABI.md).
 The nonce also derives a `Local\QTabs.Lease.` cancellation-event name; no handles
@@ -54,6 +54,9 @@ native GUIDs (at most 128), HRESULT, and a PIDL (at most 64 KiB). The copy-data
 message only queues work; posted UI dispatch publishes the response before
 signaling completion. Timeout cancels the lease and forbids storage reuse.
 Unsupported versions/counts are rejected.
+`NativeReveal` uses the existing active-GUID field without a PIDL or new wire
+layout. It is a post-transfer presentation request, not another add/remove or
+permission to close a frame. Older protocol versions are rejected.
 
 No container library, logging framework, or generic error hierarchy is selected.
 A shared directory does not justify unrelated abstractions.

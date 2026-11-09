@@ -55,6 +55,11 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   Other hosts report those positive cases as unavailable rather than claiming
   compatibility. No test downloads or parses PDBs, starts a resolver worker, or
   attaches to Explorer. Synthetic maps do not establish another OS's compatibility.
+- `explorer.native_frame`: synthetic roots and typed fake actions check selection
+  of the transferred GUID, normal/maximized restoration, visible-window no-op,
+  missing GUID, selection failure, canceled lease, wrong thread, restore-time
+  selection changes and reentrant destruction. It does not bind to Explorer or
+  establish real transfer support.
 - `workspace.performance`: counts custom publication decisions for unchanged
   passes, labels, selection, placement, external visibility, and new lifetimes.
   Hidden test-owned strips check visual-hover change detection, theme refresh,

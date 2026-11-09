@@ -249,7 +249,8 @@ LRESULT QueueNativeCommand(const quickky::GuardRequest& request)
     const auto lifetime = attachment;
     if (!lifetime || !lifetime->committed || !lifetime->native || !lifetime->exchange || lifetime->pending ||
         (request.command != quickky::GuardCommand::NativeSnapshot &&
-         request.command != quickky::GuardCommand::NativeAdd && request.command != quickky::GuardCommand::NativeRemove)) return 0;
+         request.command != quickky::GuardCommand::NativeAdd && request.command != quickky::GuardCommand::NativeRemove &&
+         request.command != quickky::GuardCommand::NativeReveal)) return 0;
     auto shared = lifetime->exchange;
     if (shared->version != quickky::kGuardVersion || shared->request != request.input_tab ||
         shared->request <= lifetime->sequence || InterlockedCompareExchange(&shared->state, 1, 0) != 0) return 0;
@@ -287,6 +288,8 @@ void ExecuteNativeCommand()
                 packet.result = S_OK;
             }
         }
+    } else if (command == quickky::GuardCommand::NativeReveal && attachment == lifetime && ControllerAvailable()) {
+        packet.result = lifetime->native->Reveal(packet.active);
     } else if (folder && attachment == lifetime && ControllerAvailable()) {
         if (command == quickky::GuardCommand::NativeAdd) {
             packet.result = lifetime->native->Add(folder.get(), packet.created);
@@ -444,7 +447,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
     }
     if (request.workspace > 3) return false;
     if (request.workspace == 2) {
-        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v6");
+        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v7");
         if (!native_message) return false;
         next->completed.reset(OpenEventW(EVENT_MODIFY_STATE, FALSE,
             (quickky::NativeMappingName(request.nonce) + L".Ready").c_str()));
@@ -457,7 +460,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
         if (!next->exchange) return false;
     } else if (quickky::NativeTabGuard::CountTabs(target) != 1) return false;
     if (request.workspace == 1 && !layout_message) {
-        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v6");
+        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v7");
         if (!layout_message) return false;
     }
     if (GetPropW(target, kBindingProperty) || !SetPropW(target, kBindingProperty, next.get())) return false;

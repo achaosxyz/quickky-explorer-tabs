@@ -241,6 +241,13 @@ bool HookClient::RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder)
     return Exchange(GuardCommand::NativeRemove, packet);
 }
 
+bool HookClient::RevealNative(const GUID& tab)
+{
+    NativeExchange packet;
+    packet.active = tab;
+    return Exchange(GuardCommand::NativeReveal, packet);
+}
+
 bool HookClient::AcceptInput(HWND sender, const GuardRequest& request) const
 {
     return sender == target_ && request.command == GuardCommand::Input &&

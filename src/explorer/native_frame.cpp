@@ -164,6 +164,34 @@ HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder)
     return S_OK;
 }
 
+HRESULT NativeFrame::Reveal(const GUID& tab)
+{
+    // Detachment clears the lease callback; absence is not permission to reveal.
+    if (!Valid() || !available_ || !available_()) return E_ABORT;
+    if (!IsIconic(root_)) return S_FALSE; // Do not activate ordinary reconciliation.
+    std::vector<GUID> tabs;
+    GUID active{};
+    if (!ReadTabs(tabs, active) || std::none_of(tabs.begin(), tabs.end(),
+        [&tab](const GUID& id) { return InlineIsEqualGUID(id, tab); })) return E_ABORT;
+    using Select = HRESULT (STDMETHODCALLTYPE*)(void*, GUID);
+    const auto result = reinterpret_cast<Select>(original_[5])(actions_, tab);
+    if (FAILED(result)) return result;
+    // Selection and restore can pump messages or close the target. Never use a
+    // replacement HWND, canceled lease, or a different selected tab to reveal.
+    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
+        !available_ || !available_()) return E_ABORT;
+    if (!IsIconic(root_)) return S_FALSE;
+    ShowWindow(root_, SW_RESTORE);
+    // Recheck restore-time selection before the explicit foreground request.
+    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
+        !available_ || !available_()) return E_ABORT;
+    if (IsIconic(root_)) return E_FAIL;
+    SetForegroundWindow(root_); // Best effort; respect Windows foreground policy.
+    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
+        !available_ || !available_()) return E_ABORT;
+    return S_OK;
+}
+
 bool NativeFrame::InstallPlus(std::weak_ptr<void> owner, std::function<bool()> available)
 {
     if (!Valid() || intercepting_) return false;

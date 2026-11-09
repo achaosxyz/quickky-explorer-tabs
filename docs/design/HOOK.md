@@ -56,9 +56,13 @@ therefore means unconfirmed completion, not rollback or a preserved source; the
 controller quarantines the source identity instead of retrying the mutation. Native
 commit binds a matched `NativeFrame` and current-folder input only, without a
 guard, region clipping, Quickky strip, or window visibility changes.
-Preparation uses the existing version-6 protocol without an ABI descriptor.
-Commit selects a built-in, version-organized map against the actual loaded image
-and validates its accessor rule on the target thread before any private COM call.
+Protocol version 7 adds `NativeReveal` to the same authenticated posted-command
+path. Only a confirmed transfer requests this optional presentation operation;
+failure never retries native add/remove. It reselects the created GUID and restores
+only a minimized destination, with best-effort foreground activation.
+Preparation carries no ABI descriptor. Commit recognizes a built-in code family
+against the loaded image and validates its accessor contract on the target thread
+before any private COM call.
 There is no controller resolver/readiness worker, DbgHelp session, runtime PDB
 parser, symbol cache, download, or object-layout scan.
 See [native ABI adaptation](NATIVE_ABI.md).

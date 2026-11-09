@@ -51,6 +51,7 @@ public:
     bool ReadNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& folder);
     bool AddNative(PCIDLIST_ABSOLUTE folder, GUID& created);
     bool RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder);
+    bool RevealNative(const GUID& tab);
     bool AcceptInput(HWND sender, const GuardRequest& request) const;
     void Cancel() noexcept;
     bool Detach();

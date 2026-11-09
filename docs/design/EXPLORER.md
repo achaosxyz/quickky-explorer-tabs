@@ -95,6 +95,13 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
+After source removal is confirmed, a minimized destination can receive a native
+reveal request. On its owning UI thread, validate that the created GUID remains
+present, select and confirm it, then use `SW_RESTORE` only while still minimized.
+Keep the original normal/maximized placement. Recheck window identity, selected
+GUID and the lease after reentrant calls, including restore and the foreground
+request. Request activation without bypassing Windows focus restrictions. This
+presentation step cannot undo or retry transfer.
 The reference-image catalog and accessor families are listed in the
 [native ABI adaptation design](NATIVE_ABI.md).
 Only `10.0.26100.9549` has scoped live evidence;
@@ -123,6 +130,11 @@ are not approved merely by listing an adapter directory. A concrete mechanism
 requires documented evidence and agreement on its compatibility boundary.
 
 ## Acceptance evidence
+
+`explorer.native_frame` uses test-owned windows and typed fake actions to check
+normal/maximized restoration and GUID/selection, thread, lease and destruction
+guards. It does not verify native transfer or foreground-policy behavior on a
+real Explorer installation.
 
 ### Scoped platform workflows
 

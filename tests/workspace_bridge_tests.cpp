@@ -462,6 +462,8 @@ void TestGuardOnlyProtocol(SyntheticTarget& target, HWND sender, HMODULE module)
     auto& request = probe.request();
     request.version = quickky::kGuardVersion + 1;
     CheckRejected(probe.Send(), "Reject guard attach with mismatched protocol version");
+    request.version = quickky::kGuardVersion - 1;
+    CheckRejected(probe.Send(), "Reject the older protocol without native reveal");
     request.version = quickky::kGuardVersion;
     request.size = static_cast<std::uint32_t>(sizeof(request) - 1);
     CheckRejected(probe.Send(), "Reject malformed guard request size");
@@ -804,6 +806,8 @@ void TestUnsupportedNativeFrame(HWND sender, HMODULE module)
     CheckNativeBand(target.root(), false);
     Check(target.CreateExtraTab() != nullptr, "Native rejection must not intercept tab creation");
     target.DestroyExtraTab();
+    Check(!client.RevealNative(GUID{1}) && IsWindow(target.root()),
+        "An uncommitted native attachment cannot reveal or mutate its root");
 }
 
 HWND OwnedStrip(HWND owner)
