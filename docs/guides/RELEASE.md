@@ -4,7 +4,9 @@
 
 Development happens on `develop`. `VERSION` contains the version being prepared.
 The application is `QTabs.exe`; its adjacent integration library is
-`QuickkyExplorerHook.dll`. The downloadable archive is `QTabs_vX.X.X.zip`.
+`QTabsHook.dll`. The downloadable archive is `QTabs_vX.X.X.zip`.
+The ZIP contains the application, hook DLL, `VERSION`, `LICENSE`, and the
+redistributable DLLs below, without READMEs or a `resources/` directory.
 The ZIP includes the matching MSVC redistributable DLLs selected by CMake's
 `InstallRequiredSystemLibraries`. Extract the complete archive; verify smoke
 and scoped Explorer loading on an OS without a globally installed VC++ runtime.

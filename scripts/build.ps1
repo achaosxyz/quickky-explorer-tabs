@@ -26,7 +26,7 @@ try {
     # Use an isolated staging directory; never recursively remove a caller's path.
     $stage = Join-Path $build ('package-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $stage, $output -Force | Out-Null
-    foreach ($file in @('QTabs.exe', 'QuickkyExplorerHook.dll')) {
+    foreach ($file in @('QTabs.exe', 'QTabsHook.dll')) {
         Copy-Item -LiteralPath (Join-Path $build "Release/$file") -Destination $stage
     }
     $runtimes = @(Get-Content -LiteralPath (Join-Path $build 'generated/runtime-files.txt') -Encoding UTF8 |
@@ -35,13 +35,8 @@ try {
     foreach ($runtime in $runtimes) {
         Copy-Item -LiteralPath $runtime -Destination $stage
     }
-    foreach ($file in @('VERSION', 'LICENSE', 'README.md', 'README.zh-CN.md')) {
+    foreach ($file in @('VERSION', 'LICENSE')) {
         Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage
-    }
-    $assets = Join-Path $stage 'resources'
-    New-Item -ItemType Directory -Path $assets | Out-Null
-    foreach ($file in @('logo.png', 'tab-preview.png')) {
-        Copy-Item -LiteralPath (Join-Path $root "resources/$file") -Destination $assets
     }
     $zip = Join-Path $output "QTabs_v$version.zip"
     Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force

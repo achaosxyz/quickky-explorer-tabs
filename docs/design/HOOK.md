@@ -2,7 +2,7 @@
 
 ## Status
 
-`QuickkyExplorerHook.dll` implements target-thread bootstrap, bounded IPC,
+`QTabsHook.dll` implements target-thread bootstrap, bounded IPC,
 classic caption/diagnostic child chrome, scoped keyboard handling, and local recovery. `HookClient`
 connects explicitly enabled workspaces; the manual guard-only probe remains a
 separate diagnostic. This is experimental integration. See the

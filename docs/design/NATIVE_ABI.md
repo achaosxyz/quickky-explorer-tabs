@@ -185,7 +185,7 @@ may use different field names; preserve the meaning rather than infer a source
 from a filename alone.
 The application ships only compiled adaptation data. Windows DLL samples and
 public PDBs stay out of version control and release ZIPs, and the application does
-not download them at runtime. The packaged `QuickkyExplorerHook.dll` is QTabs'
+not download them at runtime. The packaged `QTabsHook.dll` is QTabs'
 own build output; packaged VC++ redistributable DLLs are a separate build/packaging
 input described in the overall design, not these ExplorerFrame research samples.
 

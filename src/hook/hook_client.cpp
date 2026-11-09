@@ -38,10 +38,10 @@ bool HookLibrary::Load()
         FAILED(CoCreateGuid(&nonce)) || !StringFromGUID2(nonce, text, 40)) return false;
     const std::wstring source_directory = std::wstring(executable).substr(0,
         std::wstring(executable).find_last_of(L"\\/") + 1);
-    const std::wstring source = source_directory + L"QuickkyExplorerHook.dll";
+    const std::wstring source = source_directory + L"QTabsHook.dll";
     directory_ = std::wstring(temporary) + L"QTabs-" + text;
     if (!CreateDirectoryW(directory_.c_str(), nullptr)) { directory_.clear(); return false; }
-    filename_ = directory_ + L"\\QuickkyExplorerHook.dll";
+    filename_ = directory_ + L"\\QTabsHook.dll";
     for (const auto name : kRuntimeFiles) {
         const auto from = source_directory + name;
         if (GetFileAttributesW(from.c_str()) == INVALID_FILE_ATTRIBUTES &&

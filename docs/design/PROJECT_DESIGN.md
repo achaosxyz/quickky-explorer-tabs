@@ -111,9 +111,11 @@ and About dialog use this metadata. About displays author aCHAOS, contact
 Development uses `develop`; `main` receives the selected release candidate before
 hosted smoke testing. Release tags identify published source. The CMake project
 and application target are `QTabs`, with output filename `QTabs.exe`. Its hook
-DLL stays `QuickkyExplorerHook.dll`. PowerShell scripts in `scripts/` configure an
+target and output are `QTabsHook` and `QTabsHook.dll`. PowerShell scripts configure an
 x64 Release build, run the discovery-free `app.smoke` check, and package the EXE,
-DLL, version, license, and user documentation as `QTabs_vMAJOR.MINOR.PATCH.zip`.
+hook DLL, `VERSION`, and `LICENSE` as `QTabs_vMAJOR.MINOR.PATCH.zip`.
+User READMEs and the source `resources/` directory are not distributed in the ZIP;
+icons and localized UI strings are embedded at build time.
 The ZIP includes the active MSVC toolchain's redistributable runtime DLLs beside
 the application. CMake records their source paths for packaging and their names
 for the hook staging code. The hook library stages those app-local DLLs with its
@@ -241,7 +243,7 @@ family, compatibility limits, and extension procedure. Its
 source register, accepted image checksums, installed baseline and acquisition
 rules; ignored research output is supporting evidence, not the only record.
 CMake builds `QTabs.exe`,
-`QuickkyExplorerHook.dll`, module static libraries, and synthetic/model test
+`QTabsHook.dll`, module static libraries, and synthetic/model test
 executables when testing is enabled. Windows 11 retains the original tab host and
 uses native add/remove actions, with current-folder `+` adapted on the managed
 frame. No region clipping or second strip belongs to that backend.
@@ -495,7 +497,7 @@ alone are not capability checks. Unknown or failed integrations leave Explorer
 unmanaged, usable, and visible. A private ABI profile is a compatibility boundary,
 not proof of support for other Explorer images.
 
-`QuickkyNativeGuardProbe` and `QuickkyExplorerHook.dll` provide an explicit,
+`QuickkyNativeGuardProbe` and `QTabsHook.dll` provide an explicit,
 manual single-window mechanism test. The application uses its own staged hook
 client, not the probe executable, for explicit automatic admission. See
 [Hook](HOOK.md) and [Explorer](EXPLORER.md).

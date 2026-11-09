@@ -63,7 +63,7 @@ local environment, not a requirement to replace a different compatible SDK.
 
 Outputs are `build/vs2017-x64/Debug/QTabs.exe` and
 `build/vs2017-x64/Release/QTabs.exe`. `build/` is ignored by Git.
-`QuickkyExplorerHook.dll` is built beside each EXE and must remain beside it.
+`QTabsHook.dll` is built beside each EXE and must remain beside it.
 No installer is built. Version resources/About read root `VERSION`; build time
 is regenerated in UTC on each build.
 

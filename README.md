@@ -36,7 +36,8 @@ workspace, without replacing Explorer or adding a separate browsing window.
 3. Right-click the QTabs tray icon and check **Enable Tabs**.
 
 Visual C++ runtime DLLs are included; no separate installation or administrator
-privileges are required. Keep all extracted files together.
+privileges are required. Keep `QTabs.exe`, `QTabsHook.dll`, and the included runtime
+DLLs together.
 
 ### Notification-area menu
 

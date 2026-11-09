@@ -18,7 +18,7 @@ the outer wait. A continually busy reconciliation timer queue must not starve
 shutdown.
 
 The CMake project and application target are `QTabs`; its distributed filename is
-`QTabs.exe`. The adjacent `QuickkyExplorerHook.dll` retains its existing name.
+`QTabs.exe`. Its adjacent integration library is `QTabsHook.dll`.
 Version and build-time resources come from the root `VERSION` file and the
 per-build metadata generator. Packaging and publication are defined by the
 overall design and [release SOP](../guides/RELEASE.md).

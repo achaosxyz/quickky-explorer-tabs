@@ -997,7 +997,7 @@ int main(int argc, char* argv[])
         SyntheticTarget target;
         ControllerWindow controller;
         quickky::HookLibrary library;
-        Check(library.Load(), "Load sibling QuickkyExplorerHook.dll");
+        Check(library.Load(), "Load sibling QTabsHook.dll");
         if (classic) {
             TestClassicCaption(controller.get(), library.module());
             std::cout << "PASS: classic caption fixture (not Explorer compatibility)\n";
