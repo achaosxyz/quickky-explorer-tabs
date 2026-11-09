@@ -231,7 +231,10 @@ tables through their data-accessor slot, validate all thirteen complete entries,
 and independently locate a unique window table. Accessor/lookup relocation and
 derived fields follow the reviewed family rules; other entry bodies remain
 conservative complete-byte contracts. No general rel32 wildcarding is allowed.
-Ambiguous tables, unmatched bodies or invalid storage reject mutation. The dedicated
+Ambiguous tables, unmatched bodies or invalid storage reject mutation. The
+recognizer also caps readonly code-pointer candidates at 65,536 and accessor-family
+checks at 256 per image. Exceeding either budget rejects the entire image, never
+accepting an incomplete uniqueness scan. The dedicated
 [native ABI adaptation design](NATIVE_ABI.md) defines the reference catalog, recognition
 family, compatibility limits, and extension procedure. Its
 [source provenance](NATIVE_ABI.md#source-provenance) owns the checked-in DLL/PDB

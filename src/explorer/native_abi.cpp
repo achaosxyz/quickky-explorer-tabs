@@ -302,8 +302,12 @@ struct PatternScan {
             for (std::size_t rva = (static_cast<std::size_t>(s.VirtualAddress) + 7) & ~std::size_t{7};
                 rva + 8 <= end; rva += 8) {
                 std::uint32_t method = 0;
-                if (Pointer(Read<std::uint64_t>(image.bytes + rva), method))
+                if (Pointer(Read<std::uint64_t>(image.bytes + rva), method)) {
+                    // Byte bounds alone allow millions of candidate records.
+                    // Refuse the whole image rather than scan only a prefix.
+                    if (pointers.size() >= 65536) return false;
                     pointers.emplace_back(static_cast<DWORD>(rva), method);
+                }
             }
         }
         std::sort(pointers.begin(), pointers.end());
@@ -355,6 +359,7 @@ bool RecognizeNativeAbi(const unsigned char* bytes, std::size_t size, std::uintp
     NativeAbiDescriptor accepted;
     NativeAbiLayout accepted_layout;
     bool found = false;
+    std::size_t accessor_checks = 0;
     for (const auto& p : scan.pointers) {
         // Every table has a function pointer in slot 8; no fixture address or
         // version hint is needed to nominate it as the data-accessor candidate.
@@ -364,6 +369,10 @@ bool RecognizeNativeAbi(const unsigned char* bytes, std::size_t size, std::uintp
         for (std::size_t f = 0; f < family_count; ++f) {
             const auto& family = families[f];
             if (extent->second != family.accessor_length) continue;
+            // Repeated pointers to a real accessor otherwise repeatedly decode
+            // and hash its body/lookup on the Explorer UI thread. Do not return
+            // a prior match when the remaining uniqueness search exceeds budget.
+            if (++accessor_checks > 256) return false;
             NativeAbiDescriptor candidate;
             candidate.image = identity;
             candidate.actions_table = p.first - 8 * 8;

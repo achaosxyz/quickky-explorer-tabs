@@ -264,7 +264,12 @@ The original native-operation live evidence is limited to family 1's
    closed instead of selecting the first table. No private calls occur during
    recognition. Images are bounded to 64 MiB and readonly scan data to 32 MiB;
    exception directories are limited to 65,536 entries before index allocation,
-   and section/scan and function-boundary work is bounded by that image.
+   readonly code-pointer candidates to 65,536 before vector growth, and accessor-
+   family checks to 256 before contract decoding. A small image can otherwise
+   nominate many duplicate accessors and repeatedly hash bodies or scan unwind
+   data. Exceeding any budget rejects the whole image: a partial search cannot
+   establish uniqueness. Section/scan and function-boundary work is bounded by
+   that image.
 7. On the owning Explorer UI thread, validate the real window object's window and
    actions vtables against the recognized descriptor before AddRef or private
    storage access. Keep readable-region, GUID/PIDL, scope, lease, destination

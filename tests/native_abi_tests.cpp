@@ -208,6 +208,32 @@ void CheckModeRecognition(const std::vector<unsigned char>& original,
         {static_cast<DWORD>(old_size), static_cast<DWORD>(excessive_count * sizeof(RUNTIME_FUNCTION))};
     Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) && !layout.actions,
         "reject excessive exception entries before allocating the function index");
+
+    // Repeated pointers need little image space but can expand the candidate
+    // index or trigger repeated full accessor/lookup validation. Preserve the
+    // valid original contract: accepting it after a partial scan is unsafe.
+    for (const bool pointer_limit : {true, false}) {
+        const std::size_t repeats = pointer_limit ? 65537 : 257;
+        const auto added_size = (repeats * sizeof(std::uint64_t) + 4095) & ~std::size_t{4095};
+        image = original;
+        image.resize(old_size + added_size);
+        nt = Headers(image);
+        section = IMAGE_FIRST_SECTION(nt) + nt->FileHeader.NumberOfSections;
+        *section = {};
+        section->VirtualAddress = static_cast<DWORD>(old_size);
+        section->Misc.VirtualSize = section->SizeOfRawData = static_cast<DWORD>(added_size);
+        section->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_INITIALIZED_DATA;
+        ++nt->FileHeader.NumberOfSections;
+        nt->OptionalHeader.SizeOfImage = static_cast<DWORD>(image.size());
+        const auto method = abi.methods[pointer_limit ? 3 : 8];
+        for (std::size_t i = 0; i < repeats; ++i)
+            Write<std::uint64_t>(image.data() + old_size + i * sizeof(std::uint64_t),
+                nt->OptionalHeader.ImageBase + method);
+        Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) &&
+            !selected.actions_table && !layout.actions, pointer_limit ?
+            "reject excessive readonly code pointers before expanding the candidate index" :
+            "reject excessive accessor candidates without accepting a partial uniqueness scan");
+    }
 }
 
 void CheckCatalogSelection(const std::vector<unsigned char>& original)
