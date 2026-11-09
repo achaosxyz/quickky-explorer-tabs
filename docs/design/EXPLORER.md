@@ -9,8 +9,8 @@ fixture is diagnostic-only, not the Windows 11 backend or proof of Windows 10
 presentation compatibility. See the
 [overall design](PROJECT_DESIGN.md).
 
-The dedicated [native ABI adaptation design](NATIVE_ABI.md) defines offline map
-selection, accessor recognition, and the compatibility-extension procedure.
+The dedicated [native ABI adaptation design](NATIVE_ABI.md) defines mode-based
+recognition, offline reference fixtures, and the compatibility-extension procedure.
 
 ## Responsibility
 
@@ -46,10 +46,10 @@ a specific GUID. Enumeration still requires private tab storage: the inspected
 interface has no enumeration method, and registering an event handler does not
 return an initial snapshot. Symbol availability is not an ABI contract.
 
-Compatibility requires both a validated embedded map for the loaded image and a
-recognized accessor contract, not a file-version string allowlist. Maps are
-organized by component version; CodeView GUID/age and image size select reviewed
-vtables and methods. Several maps can share one accessor rule. The initial
+Compatibility requires a uniquely recognized compiled code contract, not a
+file-version or CodeView allowlist. Production scans read-only image sections for
+candidate tables, resolves their actual method pointers, and validates a reviewed
+complete-entry variant belonging to one of five accessor families. The initial
 rule recognizes the inspected x64 implementations of `GetTabDataById` and
 `GetBrowserTabFromId`: normalized whole-function fingerprints preserve instruction
 flow, record size, GUID fields, and output layout while permitting relocation and
@@ -61,12 +61,12 @@ The reviewed 22621 family additionally checks its split lookup's complete cold
 loop fragment and backedge. A public-symbol spelling or probe-parser failure
 does not by itself prove that a transfer capability is missing.
 
-Map selection runs on the owning Explorer UI thread. There is no downloader,
+Mode recognition runs on the owning Explorer UI thread. There is no downloader,
 runtime PDB parser, symbol cache, resolver worker, or cross-process ABI descriptor.
-Development-only PDB inspection supplies evidence for new map entries. Images
-without a validated exact or strict fallback map remain ordinary. Unknown identities may try
-same-or-lower version candidates only after all thirteen complete entry
-fingerprints match; shifted-RVA guesses are never permitted. Locator records
+Development-only PDB inspection supplies evidence for reference fixtures and
+reviewed code variants. Versioned maps are linked into tests, not the product.
+Images without an unambiguous mode match remain ordinary. Method RVAs come from
+the inspected tables, never a nearby version or a common address delta. Locator records
 contain identity and RVAs, not executable code.
 Before accessing objects, the target validates image identity, section
 bounds, the accessor contract, both vtables, and method entries. The native
@@ -95,15 +95,15 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
-The exact embedded catalog and accessor families are listed in the
+The reference-image catalog and accessor families are listed in the
 [native ABI adaptation design](NATIVE_ABI.md).
 Only `10.0.26100.9549` has scoped live evidence;
 the other entries have exact-image/PDB and offline contract checks. Unknown
-identities try same-or-lower numeric versions, nearest first, but must also match
-all thirteen complete entry fingerprints before accessor validation can bind.
+identities use the same version-independent recognition path, including all
+thirteen complete entries and accessor validation before binding.
 Unknown rule IDs, unfamiliar bodies or invalid locators fail closed. Selection
-and its version hint use the loaded module, not a newer on-disk DLL. See
-[native ABI adaptation](NATIVE_ABI.md) for the full fallback boundary.
+uses the loaded module, not a newer on-disk DLL. See
+[native ABI adaptation](NATIVE_ABI.md) for the full recognition boundary.
 The existing clipping experiment is not the Windows 11 product backend. Windows
 10 layout reservation requires its own validation, not an assumed XAML host.
 The diagnostic clipping experiment defers reentrant region restoration until

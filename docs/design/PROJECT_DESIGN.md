@@ -17,10 +17,10 @@ host merged the tab but lost selection and navigation history. Those limitations
 must remain explicit; native appearance is not evidence of state preservation.
 
 This is an early preview, not complete native-tab replacement or general
-Windows 10/11 compatibility. Windows 11 uses version-organized built-in maps and
-reusable accessor rules described in [native ABI adaptation](NATIVE_ABI.md).
-Only the original image has live acceptance; images without a validated exact map
-or strict fallback leave windows ordinary. Runtime symbol loading and downloads
+Windows 10/11 compatibility. Windows 11 uses five built-in accessor families and
+complete-entry code variants described in [native ABI adaptation](NATIVE_ABI.md).
+Only the original image has live acceptance; images without an unambiguous mode
+match leave windows ordinary. Runtime symbol loading and downloads
 are not used.
 Windows 10 build 19045 has scoped live acceptance for custom capture, current-folder
 creation, maximized switching, minimize/restore, tray actions, and recovery.
@@ -213,10 +213,12 @@ rather than read during every paint.
 
 No third-party dependencies, package manager, UI framework, or installer has been
 selected. The Windows 11 adapter uses Explorer's private tab-actions interface;
-versioned maps compiled into the integration DLL locate reviewed entry points.
-CodeView GUID/age select a map for the actual loaded image; a version string alone
-never authorizes calls. The image must have one valid, unambiguous CodeView record.
-The exact version catalog and its verification boundaries are maintained in
+five compiled accessor families and reviewed complete-entry variants recognize
+the actual image without version ordering or fixed locator RVAs. Versioned maps
+are offline regression fixtures under `tests/abi_reference/`, not a production
+allowlist or part of production headers. CodeView identifies
+the inspected image, not permission to bind. The image must have one valid,
+unambiguous CodeView record. The reference-image catalog and its boundaries are maintained in
 [native ABI adaptation](NATIVE_ABI.md). Reusable accessor rules validate
 implementation and derive object displacements;
 split lookup implementations must also validate their out-of-line loop fragment
@@ -224,11 +226,13 @@ and its backedge before their storage layout can be used;
 only explicitly reviewed relocation, displacement, and diagnostic metadata
 operands are normalized. Native storage must be in committed readable memory,
 not execute-only or guarded pages. There is no download, runtime PDB parser, symbol
-cache, or resolver worker. Unknown identities may try same-or-lower versions,
-nearest first, only if all thirteen complete entry fingerprints and the accessor
-contract match. The version hint comes from the loaded module; absent metadata
-or unmatched contracts reject mutation rather than guess offsets. The dedicated
-[native ABI adaptation design](NATIVE_ABI.md) defines the map catalog, recognition
+cache, or resolver worker. Read-only section scans discover candidate actions
+tables through their data-accessor slot, validate all thirteen complete entries,
+and independently locate a unique window table. Accessor/lookup relocation and
+derived fields follow the reviewed family rules; other entry bodies remain
+conservative complete-byte contracts. No general rel32 wildcarding is allowed.
+Ambiguous tables, unmatched bodies or invalid storage reject mutation. The dedicated
+[native ABI adaptation design](NATIVE_ABI.md) defines the reference catalog, recognition
 family, compatibility limits, and extension procedure. Its
 [source provenance](NATIVE_ABI.md#source-provenance) owns the checked-in DLL/PDB
 source register, accepted image checksums, installed baseline and acquisition
@@ -270,6 +274,7 @@ CMakeLists.txt
 VERSION
 cmake/build_metadata.cmake
 scripts/{common,build,preview-release,publish-release,test-release}.ps1
+scripts/Test-NativeAbiSamples.ps1
 .github/workflows/{windows-smoke,release}.yml
 logo.ico
 src/app/{main,tray_icon}.cpp
@@ -279,10 +284,10 @@ src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cp
 src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
 src/explorer/{native_tab_guard,folder_location,native_frame,native_abi}.{h,cpp}
-src/explorer/native_abi_profiles.cpp
+src/explorer/native_abi_patterns.cpp
 src/explorer/native_abi_internal.h
-src/explorer/abi_profiles/profile.h
-src/explorer/abi_profiles/<VERSION>.cpp
+src/explorer/abi_patterns/pattern.h
+src/explorer/abi_patterns/family_{1,2,3,4,5}.cpp
 src/chrome/tab_strip.{h,cpp}
 src/settings/preferences.{h,cpp}
 src/common/{window_identity,hook_protocol}.h
@@ -295,6 +300,8 @@ tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
 tests/app_instance_tests.cpp
 tests/native_abi_tests.cpp
+tests/native_abi_reference_selection.cpp
+tests/abi_reference/{profile.h,registry.cpp,rejections.json,<VERSION>.cpp}
 tests/README.md
 docs/design/PROJECT_DESIGN.md
 docs/design/{APP,CAPTURE,GROUP,HOOK,EXPLORER,NATIVE_ABI,CHROME,SETTINGS,COMMON}.md
@@ -345,9 +352,10 @@ adds these concrete contracts:
 - **Settings:** per-user tabs/startup preferences and management-interface locale
   (`en-US` or `zh-CN`). Runtime locale resolution reads the language preference
   or Windows UI language; no language-picker page is implemented.
-- **Native ABI profile:** a version-organized compiled map of image identity,
-  vtable/method RVAs, and accessor-rule ID. The target selects the actual loaded
-  image's map and derives layout locally. Profiles never travel over IPC.
+- **Native ABI family/variant:** an accessor-rule ID, reviewed function extents
+  and complete-entry/window-entry fingerprints, with no version or fixed RVA.
+  The target discovers tables and derives layout locally. Exact-image profiles
+  are offline regression oracles only. Neither data type travels over IPC.
 
 Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their

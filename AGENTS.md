@@ -25,8 +25,9 @@ or complete native-tab replacement.
    mutates candidates.
 3. Keep tabs disabled by default. Windows 10 custom groups require single-view
    windows and restore hidden members on disable/exit/controller loss. Windows 11
-   selects a built-in versioned map and validates its accessor rule without
-   downloading or parsing symbols: confirm destination GUID/PIDL before
+   recognizes one of five built-in accessor families plus reviewed complete-entry
+   code variants, discovering actual tables without fixed version/RVA selection
+   or symbol downloads. Versioned maps are offline test oracles only. Confirm destination GUID/PIDL before
    deleting the revalidated source GUID, never a whole source frame. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.
@@ -65,7 +66,8 @@ All listed modules contain code; a separate management page is not implemented:
   release-script checks.
 - `.github/workflows/`: Minimal Windows smoke checks and manually dispatched
   preview/release automation from `develop`.
-- `tests/`: Pure model tests, synthetic Win32 discovery tests, and test boundaries.
+- `tests/`: Pure model tests, synthetic Win32 discovery tests, test boundaries,
+  and exact-image ABI reference fixtures under `tests/abi_reference/`.
 - `docs/design/`: Overall architecture and individual module contracts.
 - `docs/guides/`: Development and validation standard operating procedures.
 - `README.md`: English user-facing features, availability, and usage.

@@ -5,8 +5,9 @@
 `window_identity.h` defines `NativeWindow`, `TabId`, `WindowCandidate`, and
 `WindowIdentity` for discovery and models. `hook_protocol.h` defines the concrete
 versioned bridge used by the application, DLL, and guard-only probe.
-Native map types live in `explorer/abi_profiles/profile.h` and never cross this
-protocol boundary.
+Native identity, descriptor and fingerprint types live in `explorer/native_abi.h`
+and never cross this protocol boundary. Versioned reference types are isolated
+in `tests/abi_reference/profile.h`, not production headers.
 See the [overall design](PROJECT_DESIGN.md).
 
 ## Responsibility

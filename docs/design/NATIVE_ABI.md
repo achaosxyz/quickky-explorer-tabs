@@ -5,12 +5,12 @@
 This document owns native `ExplorerFrame.dll` compatibility detection.
 [Explorer adapters](EXPLORER.md) owns tab operations and
 [Hook integration](HOOK.md) owns attachment. Windows 10 does not use these rules.
-The application uses compiled-in maps only: no symbol downloads, PDB loading,
+The application uses compiled-in code families only: no symbol downloads, PDB loading,
 symbol cache, or background resolver. Exact public PDBs are development evidence,
 not an application dependency.
 
-The catalog covers the exact x64 images below, inspected with matching public
-PDBs. Each map supplies all thirteen typed entries and full-entry fingerprints:
+The catalog records the exact x64 reference images below, inspected with matching
+public PDBs. Each fixture supplies thirteen typed entries and complete fingerprints:
 
 | Component version | CodeView GUID (age 1) | Accessor rule | Validation boundary | Image source | DLL SHA-256 | PDB locator |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -89,15 +89,15 @@ The exact `10.0.22000.348` and `10.0.22000.708` images expose neither actions
 interface nor the required transfer methods. They also remain unsupported;
 an absent lookup result alone is not evidence of missing transfer capability.
 
-Map versions refer to the executable image's fixed version resource. A localized
+Reference versions refer to the executable image's fixed version resource. A localized
 shell property can instead report a newer MUI/display version: on the tested
 host it reports `26100.9949`, but the main DLL's fixed version and complete SHA-256
-match the indexed `26100.9549` image. Never use that merged display value to order
-private-code compatibility candidates.
+match the indexed `26100.9549` image. Neither version value authorizes binding or
+orders production compatibility candidates.
 
 A symbol-server response that differs from the requested index hash is not
 evidence for the requested version. An independently inspected returned image
-may have its own map under its actual fixed version and CodeView identity;
+may have its own reference fixture under its actual fixed version and CodeView identity;
 retain the original request's mismatch instead of relabeling it as successful.
 
 ## Source provenance
@@ -163,8 +163,8 @@ requested version's failed provenance to make it appear successful.
 
 ### Evidence retention and distribution boundary
 
-For each new or replaced map, update the catalog's identity, source URLs and DLL
-checksum in the same change. Retain the following development evidence:
+For each new or replaced reference fixture, update the catalog's identity,
+source URLs and DLL checksum in the same change. Retain this development evidence:
 
 - Requested version, discovery-index URL/revision and expected checksum when used.
 - Actual fixed version, recorded download URL or installed source path, verified
@@ -189,70 +189,95 @@ not download them at runtime. The packaged `QuickkyExplorerHook.dll` is QTabs'
 own build output; packaged VC++ redistributable DLLs are a separate build/packaging
 input described in the overall design, not these ExplorerFrame research samples.
 
-## Versioned maps and reusable rules
+## Mode-based recognition and reference fixtures
 
-- `src/explorer/abi_profiles/profile.h` defines image identity, locator data,
-  accessor-rule ID, and a human-readable component version.
-- `src/explorer/abi_profiles/<VERSION>.cpp` is the implementation unit for that
-  exact component version. It owns its immutable reviewed map:
-  CodeView GUID/age, image size, window/tab-actions vtable RVAs, lookup RVA,
-  thirteen typed method RVAs, and its accessor-rule ID. Full-entry fingerprints
-  and the numeric component version additionally constrain fallback selection.
-  Each unit exposes one profile getter. The `9549` unit owns accessor rule 1,
-  reused by `9818` and `9278`; the `1` unit owns accessor rule 2, reused by
-  `8655`, `8737` and `8972`, and the `28000.3086` unit owns rule 3. The `28000.2605`
-  unit owns rule 4, reused by `28000.2525` and `28000.1761`.
-  The `22621.5413` unit owns rule 5, reused by the other mapped `22621` images.
-  Do not copy the controller,
-  protocol, storage checks or tab-operation code into each version unit.
-- `src/explorer/native_abi_profiles.cpp` registers the versioned map files.
-- `src/explorer/native_abi.cpp` implements common metadata, candidate ordering,
-  hashing and storage checks. `native_abi_internal.h` is the private boundary
-  between those checks and the version units' accessor recognizers. Maps share
-  a recognizer when their accessor code/storage contract is unchanged.
+Production uses `abi_patterns/pattern.h`, `native_abi_patterns.cpp` and five
+`abi_patterns/family_N.cpp` units. A family owns its reviewed data-accessor shape,
+lookup/cold-fragment checks and complete-entry variants. A variant contains only
+code fingerprints, extents and a window-entry fingerprint: no DLL version,
+CodeView identity, image size or locator RVA. Identical variants are deduplicated.
+The five families are separate contracts, not one permissive wildcard pattern.
+There are 52 deduplicated complete-entry variants across the 54 reference images:
+families 1 through 5 contain 3, 34, 1, 3 and 11 variants respectively.
 
-Version labels organize maps, not permission to call an interface. Prefer an
-exact CodeView identity/size match and verify its accessor rule. If identity is
-unknown, use the actual loaded module's fixed version resource to consider only
-same-or-lower numeric versions, nearest first, under the stronger fallback checks
-below. There is no download, shifted-RVA search, or unconditional version-range
-admission.
+The `tests/abi_reference/<VERSION>.cpp` files, `profile.h` and `registry.cpp` are
+reference fixtures linked into the ABI test target only. Their independently
+reviewed locators are an oracle for testing actual recognition, never runtime
+selection input. Fixture types and the legacy reference selector are declared
+only in the test header, not the production ABI API. The code/provenance catalog describes these reference
+images; it is not a version allowlist or evidence of universal live compatibility.
+
+`native_abi.cpp` retains bounded image, metadata, memory, hashing and accessor
+validation. Recognition discovers addresses in the inspected image rather than
+shifting a fixture's RVAs. Accessor fields and their reviewed relative references
+can vary under the existing five rules. Other typed entries deliberately retain
+complete-byte fingerprints: a changed rel32 instruction there requires review,
+not unconditional displacement masking. This first mode-based implementation
+removes fixed locator/version dependence without pretending to understand every
+possible compiler-generated equivalent of a method.
+
+### Verified reference images by family
+
+Every DLL listed below passed mode recognition and independent locator/layout
+comparison in both Debug and Release using `scripts/Test-NativeAbiSamples.ps1`.
+Fixture identities and addresses are withheld from the production recognizer;
+the oracle is consulted only after recognition. The same runs reject all thirteen
+retained excluded/missing-interface images. These are exact-image offline results,
+not blanket compatibility for an OS build, a branch, or every intermediate DLL.
+Braced revision lists denote only the explicitly listed revisions, not ranges.
+
+| Family | Tested references | Complete-entry variants | Tested DLL fixed versions |
+| --- | --- | --- | --- |
+| 1 | 3 | 3 | `10.0.26100.{9278, 9549, 9818}` |
+| 2 | 36 | 34 | `10.0.26100.{1, 712, 1000, 1150, 1455, 1591, 1882, 2161, 2314, 2454, 2605, 2894, 3037, 3323, 3624, 3912, 4061, 4202, 4484, 4768, 5074, 6725, 7019, 7171, 7309, 7462, 7705, 7824, 7920, 8115, 8328, 8457, 8521, 8655, 8737, 8972}` |
+| 3 | 1 | 1 | `10.0.28000.3086` |
+| 4 | 3 | 3 | `10.0.28000.{1761, 2525, 2605}` |
+| 5 | 11 | 11 | `10.0.22621.{3672, 3958, 4541, 4601, 4746, 5262, 5331, 5413, 5909, 5983, 6197}` |
+
+`tests/abi_reference/rejections.json` registers the nine missing-interface images
+and four excluded accessor contracts. The sample runner requires each negative
+version exactly once, validates its category, and rejects missing or extra negative
+registrations before execution; a printed rejection count is not coverage proof.
+
+The per-image source register above owns SHA-256, CodeView/PDB identity and source
+URLs. Keep that register, this grouped matrix and the test fixture catalog aligned.
+The original native-operation live evidence is limited to family 1's
+`10.0.26100.9549`; this recognition revision has no new scoped live transfer run.
 
 ## Binding flow
 
-The tray's explicit compatibility check uses the same catalog/contract selector
-with `LOAD_LIBRARY_AS_IMAGE_RESOURCE` alone to require an image layout. It checks
-the returned handle tag before any RVA reads, rejects raw-data mappings, and uses
-the preferred base for an image resource or the actual base when Windows retains
-an already-loaded executable module. The reported fixed version always belongs
-to the checked mapping, which may precede a pending on-disk update. It releases
-its mapping/reference immediately. It does
-not execute DLL code, parse symbols, inject, or infer live transfer success.
-This diagnostic is separate from target binding, which always checks the actual
-module loaded by the selected Explorer thread.
+1. Inspect the actual bounded x64 image and its single unambiguous RSDS identity.
+   CodeView labels the returned descriptor; it does not select a version map.
+2. Enumerate aligned pointer-table candidates only in readable, nonwritable,
+   nonexecutable image sections. Interpret pointers relative to the actual ASLR
+   base, or the preferred base for an unrelocated image-resource mapping.
+3. Use slot 8 and its exact unwind extent to try the five data-accessor shapes.
+   Resolve the actual lookup rel32 from that recognized body, including rule 5's
+   cold fragment/backedge. Derive fields only after the family contract passes.
+4. Read all thirteen actual table entries. Require a reviewed variant's complete
+   typed-entry fingerprints and boundaries; slot 8 uses its complete normalized
+   family check, including the validated lookup relationship and field derivation.
+5. Independently find a unique readonly window-table pointer whose complete first
+   entry matches that same variant. A reviewed leaf entry must include its full
+   return; no arbitrary prefix matching or guessed table adjacency is allowed.
+6. Require one unique resulting descriptor/layout. Conflicting candidates fail
+   closed instead of selecting the first table. No private calls occur during
+   recognition. Images are bounded to 64 MiB and readonly scan data to 32 MiB;
+   exception directories are limited to 65,536 entries before index allocation,
+   and section/scan and function-boundary work is bounded by that image.
+7. On the owning Explorer UI thread, validate the real window object's window and
+   actions vtables against the recognized descriptor before AddRef or private
+   storage access. Keep readable-region, GUID/PIDL, scope, lease, destination
+   confirmation, source revalidation and uncertain-transfer quarantine checks.
 
-1. On the owning Explorer UI thread, inspect the actual loaded module's bounded
-   PE metadata and CodeView identity. Do not base selection on a newer on-disk DLL.
-   Require exactly one valid RSDS record with nonzero GUID/age; malformed or
-   duplicate records reject the image and leave the output identity empty.
-2. Prefer a matching identity in the compiled catalog. Otherwise consider
-   same-or-lower versions, nearest first, using the read-only fallback gate. A
-   failed candidate must not prevent a later valid candidate from being checked.
-3. Reject unknown rule IDs. Validate section bounds, read-only vtables,
-   executable method entries, the recognized accessor bodies, and the original
-   lookup-call target. Derive object offsets only after these checks succeed.
-4. Validate the root's window-data and tab-actions pointers before taking a COM
-   reference or reading private storage. Existing identity, lease, folder-scope,
-   GUID/PIDL confirmation, and uncertain-transfer quarantine checks still apply.
-   Native object/record ranges must fit one committed readable memory region;
-   execute-only, guarded, inaccessible, and uncommitted pages are not readable.
-5. Unsupported images/rules remain ordinary Explorer windows. No clipping,
-   additional Windows 11 strip, path-reopen fallback, or process termination occurs.
-
-All map selection runs locally, with no controller worker or cross-process ABI
-descriptor. The existing hook protocol remains unchanged. The version hint comes
-only from the loaded module, never a newer on-disk DLL. Runtime PDB parsers are
-not part of admission.
+The tray's compatibility diagnostic uses this same recognizer with
+`LOAD_LIBRARY_AS_IMAGE_RESOURCE`, not a separate version allowlist. It distinguishes
+image layout from raw-data mappings and retains actual-ASLR handling when Windows
+returns an already-loaded executable module. Fixed version is display metadata;
+absence of a version resource must not veto otherwise valid mode recognition.
+An offline match is not proof that native transfer works on that installation.
+The catalog's scoped live evidence covers native operations on the installed
+baseline; it does not substitute for live acceptance of this recognition change.
 
 ## Accessor rule 1
 
@@ -361,58 +386,78 @@ catalog. Their transfer interfaces exist, but their data/lookup contracts do not
 match rule 5. Do not admit them by version proximity or reuse offsets from a
 different shape.
 
-## Conservative nearest-version fallback
+## Selection boundaries and validation
 
-An unknown CodeView identity may use a candidate only after read-only validation:
+Version proximity and fixed RVAs play no role in production admission. Reuse an
+existing family only when its complete code and storage contract matches. New
+method bodies need a reviewed variant; changed allocator, signature, slot meaning
+or storage semantics require a new contract. No runtime symbols or downloads are
+introduced. Neither fingerprints nor a public symbol name prove every transitive
+private behavior.
 
-1. Read the numeric four-word version from the loaded module's fixed version
-   resource. Missing/malformed version metadata disables fallback, not exact
-   identity matching. Never read a replacement DLL from disk for this hint.
-2. Consider only same-or-lower catalog versions, nearest first. Do not try newer
-   versions or mutate Explorer while testing a candidate.
-3. Require the candidate's original vtable/method RVAs and all thirteen complete
-   entry bodies to match their stored fingerprints. Require recorded unwind
-   boundaries for non-leaf entries; reviewed leaf thunks include their complete
-   jump/return. Only the reviewed data-accessor diagnostic immediates may differ
-   in this extra check: do not wildcard relative references or object offsets.
-4. Rebind the descriptor to the inspected identity only after the entry check;
-   then validate its accessor rule, lookup target, sections and derived fields.
-   A failed candidate permits checking the next lower candidate.
-5. Return no adapter if no candidate passes. File-version proximity alone never
-   authorizes a private call. Moved functions or unfamiliar bodies need a new
-   development-time map; this is not universal forward compatibility.
+Require independent tests of all reference images with fixture identities and
+locators withheld from the recognizer. Compare discovered methods, tables, lookup
+and derived layout with the exact-image oracle. Also change identity metadata,
+move accessors/lookup/tables with repaired references, damage every typed entry,
+add duplicate candidates, corrupt function bounds and exercise ASLR. Excluded
+compact accessors and missing-interface images must remain unsupported.
 
-Fallback recognizes an already reviewed code contract, not an arbitrary private
-ABI from names alone. Transitive private behavior remains a compatibility risk;
-keep destination confirmation, source revalidation and timeout quarantine.
+## Adding a reviewed mode variant
 
-## Adding support for another component version
+1. Obtain an exact image and matching PDB, preserving the source records above.
+2. Inspect all thirteen signatures, complete entry extents, window-entry behavior,
+   accessor output/record layout, allocator and native drop semantics.
+3. Try the existing recognizer without adding the image's identity or addresses.
+   If it already matches, add only reference evidence and regression coverage.
+4. For a new complete-entry body under an unchanged family, add a deduplicated
+   reviewed code variant to that family, not a version-named production file.
+   Never wildcard arbitrary relative references just to make an image pass.
+5. For an unfamiliar accessor, document and test its entire recognized shape and
+   derivation before introducing another family. Do not enable the deliberately
+   excluded older 22621 contracts without a separate accepted scope change.
+6. Run Debug/Release CTest and every supported/unsupported reference-image case.
+   Perform scoped live testing before claiming new end-to-end Explorer support;
+   only the installed baseline currently has such acceptance evidence.
 
-1. Obtain the exact image and matching public PDB in a development environment.
-   Record file version, CodeView GUID/age, image size, and symbol provenance.
-   Use the recorded verified image path: a rejected or truncated payload may be
-   retained separately. Recheck provenance before generating a map.
-2. Inspect the window/tab-actions vtables and all thirteen method signatures,
-   their order/extent, `this` adjustments, snapshot ownership, and native drop
-   behavior. A function name alone is insufficient evidence.
-3. If the accessor contract matches an existing rule, add only
-   `abi_profiles/<VERSION>.cpp` and register it in `native_abi_profiles.cpp`, including
-   exact full-entry fingerprint lengths/boundaries and the numeric version.
-   Record every RVA from that exact image; do not shift an older map by a delta.
-4. If code shape changes, add a reviewed rule with its own full boundaries,
-   normalization operands, derivation, and negative tests. If record layout,
-   signature, extent, or ownership changes, update the adapter contract first.
-   Do not broaden an existing rule with wildcard hashes or version-range bypasses.
-5. Run C++17 builds and CTest, including catalog selection, unknown-map/rule
-   rejection, damaged accessor, relocation, and field-derivation cases. Validate
-   actual add/select/remove, current-folder `+`, pre-existing multi-tab sources,
-   and maximized windows using the directory-scoped
-   [Explorer testing procedure](../guides/EXPLORER_TESTING.md).
-   `QuickkyNativeAbiTests.exe --image PATH\ExplorerFrame.dll` additionally checks
-   an explicitly supplied reviewed image: its exact map, derived layout,
-   fallback rejection/selection, each typed-entry fingerprint, fixed version
-   resource and ASLR relocation. The test process does not initialize that DLL,
-   invoke its private interfaces or attach to Explorer. Downloaded images/PDBs
-   stay in ignored research output, not the product package or source tree.
-6. Claim compatibility only for the images and routes actually tested. Preserve
-   destination GUID/PIDL confirmation and source revalidation in every rule.
+## Reusable adaptation guidance
+
+Classify the change before editing a recognizer:
+
+| Observed change | Required treatment |
+| --- | --- |
+| Identity/version or table addresses change; all reviewed code contracts still match | Add reference evidence and tests only; do not add runtime version/RVA cases. |
+| Object fields move inside a recognized accessor shape | Derive and validate the new fields from that code; never copy a nearby version's offsets. |
+| A complete typed-entry body changes while signatures, ownership and storage remain established | Review a new complete-entry variant under the existing family. Do not weaken existing fingerprints. |
+| The accessor/lookup code shape, output layout, record stride or ownership changes | Establish a separate reviewed family/contract, or leave it unsupported. |
+| Required transfer primitives are absent | Keep the image unsupported; do not fabricate slots or reopen paths as a substitute. |
+
+Apply these established lessons during subsequent adaptations:
+
+- **Function extent is part of the proof.** Nonleaf entries use exact primary
+  unwind ranges. Leaf thunks/window entries require their complete jump/return
+  sequence, not a convenient prefix. Split lookup code requires the complete
+  cold fragment and its exact backedge as well as the primary range.
+- **Do not confuse a locator failure with missing capability.** Public PDBs may
+  expose a bare lookup name rather than a decorated one. Check the exact symbols,
+  table signatures and actual method bodies before classifying an image as
+  missing the native interface.
+- **Normalize only reviewed operands.** The five accessor shapes deliberately
+  differ in title retrieval, instruction placement and diagnostic immediates.
+  Diagnostic line numbers may vary only at the documented operands. Unfamiliar
+  branches, allocator behavior or other methods' rel32 bytes still reject.
+- **Use actual bytes and actual paths.** Fixed version is source metadata, not
+  the MUI-merged display version. Preserve wrong-server-response provenance and
+  use the inventory's verified image path, not a similarly named truncated file.
+  A matching PDB name alone is not exact DLL/PDB evidence.
+- **Test both mapping forms.** Unrelocated image-resource pointers use the
+  preferred base; already-loaded executable modules use actual ASLR addresses.
+  Neither case authorizes DLL initialization or private calls during detection.
+- **Negative evidence matters.** Retain old-interface and deliberately excluded
+  accessors as rejection fixtures. New positive variants must not turn them into
+  supported images or make duplicate table candidates first-match wins.
+
+Each adaptation change updates the current source register and family matrix,
+records which complete-entry contract was reused or reviewed, and states the
+actual Debug/Release, rejection and scoped-live results. Summarize durable rules
+here rather than appending chronological investigation logs or claiming that an
+offline match proves live native migration.

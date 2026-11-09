@@ -99,61 +99,12 @@ add_library(quickky_explorer STATIC
     src/explorer/folder_location.cpp
     src/explorer/native_frame.cpp
     src/explorer/native_abi.cpp
-    src/explorer/native_abi_profiles.cpp
-    src/explorer/abi_profiles/10.0.26100.1.cpp
-    src/explorer/abi_profiles/10.0.22621.5413.cpp
-    src/explorer/abi_profiles/10.0.22621.5331.cpp
-    src/explorer/abi_profiles/10.0.22621.5262.cpp
-    src/explorer/abi_profiles/10.0.22621.3958.cpp
-    src/explorer/abi_profiles/10.0.22621.4541.cpp
-    src/explorer/abi_profiles/10.0.22621.4601.cpp
-    src/explorer/abi_profiles/10.0.22621.4746.cpp
-    src/explorer/abi_profiles/10.0.26100.7309.cpp
-    src/explorer/abi_profiles/10.0.26100.7462.cpp
-    src/explorer/abi_profiles/10.0.26100.7705.cpp
-    src/explorer/abi_profiles/10.0.26100.7824.cpp
-    src/explorer/abi_profiles/10.0.26100.7920.cpp
-    src/explorer/abi_profiles/10.0.26100.8115.cpp
-    src/explorer/abi_profiles/10.0.26100.8328.cpp
-    src/explorer/abi_profiles/10.0.26100.8457.cpp
-    src/explorer/abi_profiles/10.0.26100.8521.cpp
-    src/explorer/abi_profiles/10.0.22621.3672.cpp
-    src/explorer/abi_profiles/10.0.26100.5074.cpp
-    src/explorer/abi_profiles/10.0.26100.6725.cpp
-    src/explorer/abi_profiles/10.0.26100.7019.cpp
-    src/explorer/abi_profiles/10.0.26100.7171.cpp
-    src/explorer/abi_profiles/10.0.22621.5909.cpp
-    src/explorer/abi_profiles/10.0.22621.6197.cpp
-    src/explorer/abi_profiles/10.0.26100.9818.cpp
-    src/explorer/abi_profiles/10.0.26100.9549.cpp
-    src/explorer/abi_profiles/10.0.26100.9278.cpp
-    src/explorer/abi_profiles/10.0.26100.8972.cpp
-    src/explorer/abi_profiles/10.0.26100.8737.cpp
-    src/explorer/abi_profiles/10.0.26100.8655.cpp
-    src/explorer/abi_profiles/10.0.28000.3086.cpp
-    src/explorer/abi_profiles/10.0.28000.2605.cpp
-    src/explorer/abi_profiles/10.0.28000.2525.cpp
-    src/explorer/abi_profiles/10.0.28000.1761.cpp
-    src/explorer/abi_profiles/10.0.26100.4202.cpp
-    src/explorer/abi_profiles/10.0.26100.4768.cpp
-    src/explorer/abi_profiles/10.0.26100.4484.cpp
-    src/explorer/abi_profiles/10.0.26100.2454.cpp
-    src/explorer/abi_profiles/10.0.26100.2605.cpp
-    src/explorer/abi_profiles/10.0.26100.2894.cpp
-    src/explorer/abi_profiles/10.0.26100.3037.cpp
-    src/explorer/abi_profiles/10.0.26100.3323.cpp
-    src/explorer/abi_profiles/10.0.26100.3624.cpp
-    src/explorer/abi_profiles/10.0.26100.3912.cpp
-    src/explorer/abi_profiles/10.0.26100.4061.cpp
-    src/explorer/abi_profiles/10.0.26100.1150.cpp
-    src/explorer/abi_profiles/10.0.26100.1455.cpp
-    src/explorer/abi_profiles/10.0.26100.1591.cpp
-    src/explorer/abi_profiles/10.0.26100.1882.cpp
-    src/explorer/abi_profiles/10.0.26100.2161.cpp
-    src/explorer/abi_profiles/10.0.26100.2314.cpp
-    src/explorer/abi_profiles/10.0.26100.1000.cpp
-    src/explorer/abi_profiles/10.0.26100.712.cpp
-    src/explorer/abi_profiles/10.0.22621.5983.cpp
+    src/explorer/native_abi_patterns.cpp
+    src/explorer/abi_patterns/family_1.cpp
+    src/explorer/abi_patterns/family_2.cpp
+    src/explorer/abi_patterns/family_3.cpp
+    src/explorer/abi_patterns/family_4.cpp
+    src/explorer/abi_patterns/family_5.cpp
 )
 target_include_directories(quickky_explorer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(quickky_explorer PUBLIC user32 gdi32 comctl32 ole32 oleaut32 shell32 uuid advapi32 bcrypt psapi)
@@ -194,8 +145,69 @@ quickky_configure_target(QTabs)
 include(CTest)
 
 if(BUILD_TESTING)
+    # Exact-image locators are offline oracles, never linked into the product.
+    add_library(quickky_abi_reference STATIC
+        tests/native_abi_reference_selection.cpp
+        tests/abi_reference/registry.cpp
+        tests/abi_reference/10.0.26100.1.cpp
+        tests/abi_reference/10.0.22621.5413.cpp
+        tests/abi_reference/10.0.22621.5331.cpp
+        tests/abi_reference/10.0.22621.5262.cpp
+        tests/abi_reference/10.0.22621.3958.cpp
+        tests/abi_reference/10.0.22621.4541.cpp
+        tests/abi_reference/10.0.22621.4601.cpp
+        tests/abi_reference/10.0.22621.4746.cpp
+        tests/abi_reference/10.0.26100.7309.cpp
+        tests/abi_reference/10.0.26100.7462.cpp
+        tests/abi_reference/10.0.26100.7705.cpp
+        tests/abi_reference/10.0.26100.7824.cpp
+        tests/abi_reference/10.0.26100.7920.cpp
+        tests/abi_reference/10.0.26100.8115.cpp
+        tests/abi_reference/10.0.26100.8328.cpp
+        tests/abi_reference/10.0.26100.8457.cpp
+        tests/abi_reference/10.0.26100.8521.cpp
+        tests/abi_reference/10.0.22621.3672.cpp
+        tests/abi_reference/10.0.26100.5074.cpp
+        tests/abi_reference/10.0.26100.6725.cpp
+        tests/abi_reference/10.0.26100.7019.cpp
+        tests/abi_reference/10.0.26100.7171.cpp
+        tests/abi_reference/10.0.22621.5909.cpp
+        tests/abi_reference/10.0.22621.6197.cpp
+        tests/abi_reference/10.0.26100.9818.cpp
+        tests/abi_reference/10.0.26100.9549.cpp
+        tests/abi_reference/10.0.26100.9278.cpp
+        tests/abi_reference/10.0.26100.8972.cpp
+        tests/abi_reference/10.0.26100.8737.cpp
+        tests/abi_reference/10.0.26100.8655.cpp
+        tests/abi_reference/10.0.28000.3086.cpp
+        tests/abi_reference/10.0.28000.2605.cpp
+        tests/abi_reference/10.0.28000.2525.cpp
+        tests/abi_reference/10.0.28000.1761.cpp
+        tests/abi_reference/10.0.26100.4202.cpp
+        tests/abi_reference/10.0.26100.4768.cpp
+        tests/abi_reference/10.0.26100.4484.cpp
+        tests/abi_reference/10.0.26100.2454.cpp
+        tests/abi_reference/10.0.26100.2605.cpp
+        tests/abi_reference/10.0.26100.2894.cpp
+        tests/abi_reference/10.0.26100.3037.cpp
+        tests/abi_reference/10.0.26100.3323.cpp
+        tests/abi_reference/10.0.26100.3624.cpp
+        tests/abi_reference/10.0.26100.3912.cpp
+        tests/abi_reference/10.0.26100.4061.cpp
+        tests/abi_reference/10.0.26100.1150.cpp
+        tests/abi_reference/10.0.26100.1455.cpp
+        tests/abi_reference/10.0.26100.1591.cpp
+        tests/abi_reference/10.0.26100.1882.cpp
+        tests/abi_reference/10.0.26100.2161.cpp
+        tests/abi_reference/10.0.26100.2314.cpp
+        tests/abi_reference/10.0.26100.1000.cpp
+        tests/abi_reference/10.0.26100.712.cpp
+        tests/abi_reference/10.0.22621.5983.cpp
+    )
+    target_link_libraries(quickky_abi_reference PUBLIC quickky_explorer)
+    quickky_configure_target(quickky_abi_reference)
     add_executable(QuickkyNativeAbiTests tests/native_abi_tests.cpp)
-    target_link_libraries(QuickkyNativeAbiTests PRIVATE quickky_explorer)
+    target_link_libraries(QuickkyNativeAbiTests PRIVATE quickky_abi_reference)
     quickky_configure_target(QuickkyNativeAbiTests)
     add_test(NAME explorer.native_abi COMMAND QuickkyNativeAbiTests)
     set_tests_properties(explorer.native_abi PROPERTIES TIMEOUT 20)

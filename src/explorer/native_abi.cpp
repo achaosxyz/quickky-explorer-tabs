@@ -1,4 +1,5 @@
 #include "explorer/native_abi_internal.h"
+#include "explorer/abi_patterns/pattern.h"
 
 #include <bcrypt.h>
 #include <winver.h>
@@ -6,71 +7,11 @@
 #include <array>
 #include <cstring>
 #include <memory>
+#include <map>
 #include <type_traits>
 #include <vector>
 
 namespace quickky {
-namespace detail {
-
-// A bounded image view, not an object scanner. Tests expand file images to RVAs;
-// production checks the actual loaded image on the owning Explorer thread.
-struct NativeImageView {
-    const unsigned char* bytes;
-    std::size_t size;
-    const IMAGE_NT_HEADERS64* nt = nullptr;
-    const IMAGE_SECTION_HEADER* sections = nullptr;
-
-    bool Range(std::size_t rva, std::size_t length) const
-    { return rva <= size && length <= size - rva; }
-
-    bool Open()
-    {
-        if (!bytes || !Range(0, sizeof(IMAGE_DOS_HEADER))) return false;
-        const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(bytes);
-        if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0 ||
-            !Range(dos->e_lfanew, sizeof(IMAGE_NT_HEADERS64))) return false;
-        nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(bytes + dos->e_lfanew);
-        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
-            nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
-            nt->FileHeader.SizeOfOptionalHeader != sizeof(IMAGE_OPTIONAL_HEADER64) ||
-            nt->OptionalHeader.NumberOfRvaAndSizes < IMAGE_NUMBEROF_DIRECTORY_ENTRIES ||
-            nt->OptionalHeader.SizeOfImage != size || !nt->FileHeader.NumberOfSections ||
-            nt->FileHeader.NumberOfSections > 96) return false;
-        const auto offset = static_cast<std::size_t>(dos->e_lfanew) + sizeof(*nt);
-        if (!Range(offset, nt->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER))) return false;
-        sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(bytes + offset);
-        return true;
-    }
-
-    bool Section(std::uint32_t rva, std::size_t length, bool executable) const
-    {
-        if (!Range(rva, length)) return false;
-        for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
-            const auto& s = sections[i];
-            const auto extent = std::max(s.Misc.VirtualSize, s.SizeOfRawData);
-            if (rva < s.VirtualAddress || rva - s.VirtualAddress > extent ||
-                length > extent - (rva - s.VirtualAddress)) continue;
-            return (s.Characteristics & IMAGE_SCN_MEM_READ) &&
-                !(s.Characteristics & IMAGE_SCN_MEM_WRITE) &&
-                !!(s.Characteristics & IMAGE_SCN_MEM_EXECUTE) == executable;
-        }
-        return false;
-    }
-
-    bool Function(std::uint32_t rva, std::size_t length) const
-    {
-        const auto d = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
-        if (!d.Size || d.Size % sizeof(RUNTIME_FUNCTION) || !Range(d.VirtualAddress, d.Size) ||
-            !Section(rva, length, true)) return false;
-        const auto functions = reinterpret_cast<const RUNTIME_FUNCTION*>(bytes + d.VirtualAddress);
-        for (unsigned i = 0; i < d.Size / sizeof(*functions); ++i) {
-            if (functions[i].BeginAddress == rva &&
-                static_cast<std::uint64_t>(rva) + length == functions[i].EndAddress) return true;
-        }
-        return false;
-    }
-};
-} // namespace detail
 namespace {
 using detail::NativeImageView;
 
@@ -98,21 +39,27 @@ constexpr unsigned char kColdDigest[]{0x3d,0xf3,0xc7,0x9c,0x02,0x28,0xf9,0xb5,
     0x14,0xe8,0x72,0x45,0x70,0xcd,0xb9,0xfa,0x51,0xf2,0xbb,0x83,0x20,0xad,0x9f,0x9e,
     0x06,0x3b,0x65,0x5f,0x0a,0xac,0x44,0xf2};
 
-bool DigestMatches(std::vector<unsigned char>& bytes, const unsigned char* expected)
+bool HashBytes(const unsigned char* bytes, std::size_t size, std::array<unsigned char, 32>& digest)
 {
     BCRYPT_ALG_HANDLE algorithm = nullptr;
     BCRYPT_HASH_HANDLE hash = nullptr;
-    std::array<unsigned char, 32> digest{};
     bool match = false;
     if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) >= 0 &&
         BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0) >= 0 &&
-        BCryptHashData(hash, bytes.data(), static_cast<ULONG>(bytes.size()), 0) >= 0 &&
+        BCryptHashData(hash, const_cast<unsigned char*>(bytes), static_cast<ULONG>(size), 0) >= 0 &&
         BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0) >= 0) {
-        match = std::equal(digest.begin(), digest.end(), expected);
+        match = true;
     }
     if (hash) BCryptDestroyHash(hash);
     if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
     return match;
+}
+
+bool DigestMatches(const std::vector<unsigned char>& bytes, const unsigned char* expected)
+{
+    std::array<unsigned char, 32> digest{};
+    return HashBytes(bytes.data(), bytes.size(), digest) &&
+        std::equal(digest.begin(), digest.end(), expected);
 }
 
 bool Fingerprint(const NativeImageView& image, std::uint32_t rva, unsigned length,
@@ -128,27 +75,6 @@ bool Fingerprint(const NativeImageView& image, std::uint32_t rva, unsigned lengt
     return DigestMatches(bytes, expected);
 }
 
-bool EntryFingerprintsMatch(const NativeImageView& image, const NativeAbiProfile& profile)
-{
-    for (unsigned i = 0; i < 13; ++i) {
-        const auto rva = profile.descriptor.methods[i];
-        const auto& entry = profile.entry_fingerprints[i];
-        if (!entry.length || !image.Section(rva, entry.length, true) ||
-            (entry.unwind && !image.Function(rva, entry.length))) return false;
-        std::vector<unsigned char> code(image.bytes + rva, image.bytes + rva + entry.length);
-        if (i == 8) {
-            // Fallback is stricter than accessor-family recognition: do not mask
-            // relative calls or fields, only the reviewed diagnostic immediates.
-            for (const auto offset : profile.data_diagnostics) {
-                if (!offset || offset > code.size() || code.size() - offset < 5 ||
-                    code[offset - 1] != 0xba || code[offset + 4] != 0xe8) return false;
-                std::fill_n(code.begin() + offset, 4, static_cast<unsigned char>(0));
-            }
-        }
-        if (!DigestMatches(code, entry.sha256)) return false;
-    }
-    return true;
-}
 } // namespace
 
 std::uint64_t NativeFileVersionResource(const void* data, std::size_t size)
@@ -199,15 +125,14 @@ NativeAbiFileStatus InspectNativeAbiFile(const wchar_t* path)
     if (nt.Signature != IMAGE_NT_SIGNATURE || nt.FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
         nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return status;
     status.file_version = NativeModuleVersion(module);
-    status.inspected = status.file_version != 0;
+    NativeImageIdentity identity;
+    status.inspected = InspectNativeImage(bytes, nt.OptionalHeader.SizeOfImage, identity);
     if (!status.inspected) return status;
-    std::size_t count = 0;
-    const auto profiles = BuiltinNativeAbiProfiles(count);
     NativeAbiDescriptor descriptor;
     NativeAbiLayout layout;
     // New image resources are unrelocated; existing executable images use ASLR.
-    status.supported = SelectNativeAbi(bytes, nt.OptionalHeader.SizeOfImage, tag == 2 ? 0 : handle,
-        profiles, count, descriptor, layout, status.file_version);
+    status.supported = RecognizeNativeAbi(bytes, nt.OptionalHeader.SizeOfImage, tag == 2 ? 0 : handle,
+        descriptor, layout);
     return status;
 }
 
@@ -258,6 +183,19 @@ bool InspectNativeImage(const unsigned char* bytes, std::size_t size, NativeImag
     return found;
 }
 
+bool detail::CheckAccessor(const NativeImageView& image, const NativeAbiDescriptor& descriptor,
+    NativeAbiLayout& layout)
+{
+    switch (descriptor.accessor_rule) {
+    case 1: return CheckAccessorRule1(image, descriptor, layout);
+    case 2: return CheckAccessorRule2(image, descriptor, layout);
+    case 3: return CheckAccessorRule3(image, descriptor, layout);
+    case 4: return CheckAccessorRule4(image, descriptor, layout);
+    case 5: return CheckAccessorRule5(image, descriptor, layout);
+    default: return false;
+    }
+}
+
 bool ValidateNativeAbi(const unsigned char* bytes, std::size_t size, std::uintptr_t base,
     const NativeAbiDescriptor& descriptor, NativeAbiLayout& layout)
 {
@@ -277,20 +215,7 @@ bool ValidateNativeAbi(const unsigned char* bytes, std::size_t size, std::uintpt
             Read<std::uint64_t>(bytes + descriptor.actions_table + i * 8) !=
                 static_cast<std::uint64_t>(base) + descriptor.methods[i]) return false;
     }
-    switch (descriptor.accessor_rule) {
-    case 1:
-        return detail::CheckAccessorRule1(image, descriptor, layout);
-    case 2:
-        return detail::CheckAccessorRule2(image, descriptor, layout);
-    case 3:
-        return detail::CheckAccessorRule3(image, descriptor, layout);
-    case 4:
-        return detail::CheckAccessorRule4(image, descriptor, layout);
-    case 5:
-        return detail::CheckAccessorRule5(image, descriptor, layout);
-    default:
-        return false;
-    }
+    return detail::CheckAccessor(image, descriptor, layout);
 }
 
 bool detail::CheckDataAccessor(const NativeImageView& image, const NativeAbiDescriptor& descriptor,
@@ -330,49 +255,160 @@ bool detail::CheckDataAccessor(const NativeImageView& image, const NativeAbiDesc
     return true;
 }
 
-bool SelectNativeAbi(const unsigned char* bytes, std::size_t size, std::uintptr_t base,
-    const NativeAbiProfile* profiles, std::size_t count,
-    NativeAbiDescriptor& descriptor, NativeAbiLayout& layout,
-    std::uint64_t file_version, const NativeAbiProfile** matched)
+namespace {
+
+// Per-inspection scratch state. Index image pointers once, and hash complete
+// bodies once per (RVA, extent), instead of rescanning for every code variant.
+// Nothing here reads Explorer objects or executes any candidate function.
+struct PatternScan {
+    const NativeImageView& image;
+    std::uintptr_t base;
+    std::map<DWORD, DWORD> extents;
+    std::vector<std::pair<DWORD, DWORD>> pointers;
+    std::map<std::uint64_t, std::array<unsigned char, 32>> hashes;
+
+    bool Pointer(std::uint64_t value, std::uint32_t& rva) const
+    {
+        if (value < base || value - base > MAXDWORD) return false;
+        rva = static_cast<DWORD>(value - base);
+        return image.Section(rva, 1, true);
+    }
+
+    bool Prepare()
+    {
+        const auto d = image.nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+        // Bound allocation/work before inserting any tree nodes. SizeOfImage
+        // alone still permits millions of tiny synthetic RUNTIME_FUNCTIONs.
+        constexpr std::size_t max_functions = 65536;
+        const auto function_count = d.Size / sizeof(RUNTIME_FUNCTION);
+        if (!d.Size || d.Size % sizeof(RUNTIME_FUNCTION) ||
+            function_count > max_functions ||
+            !image.Section(d.VirtualAddress, d.Size, false)) return false;
+        for (std::size_t i = 0; i < function_count; ++i) {
+            const auto f = Read<RUNTIME_FUNCTION>(image.bytes + d.VirtualAddress + i * sizeof(RUNTIME_FUNCTION));
+            if (f.EndAddress <= f.BeginAddress ||
+                !image.Section(f.BeginAddress, f.EndAddress - f.BeginAddress, true) ||
+                !extents.emplace(f.BeginAddress, f.EndAddress - f.BeginAddress).second) return false;
+        }
+        std::size_t scanned = 0;
+        for (unsigned i = 0; i < image.nt->FileHeader.NumberOfSections; ++i) {
+            const auto& s = image.sections[i];
+            if (!(s.Characteristics & IMAGE_SCN_MEM_READ) ||
+                (s.Characteristics & (IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_DISCARDABLE))) continue;
+            const auto length = std::max(s.Misc.VirtualSize, s.SizeOfRawData);
+            if (!image.Range(s.VirtualAddress, length) || length > 32 * 1024 * 1024 - scanned) return false;
+            scanned += length;
+            const auto end = static_cast<std::size_t>(s.VirtualAddress) + length;
+            for (std::size_t rva = (static_cast<std::size_t>(s.VirtualAddress) + 7) & ~std::size_t{7};
+                rva + 8 <= end; rva += 8) {
+                std::uint32_t method = 0;
+                if (Pointer(Read<std::uint64_t>(image.bytes + rva), method))
+                    pointers.emplace_back(static_cast<DWORD>(rva), method);
+            }
+        }
+        std::sort(pointers.begin(), pointers.end());
+        pointers.erase(std::unique(pointers.begin(), pointers.end()), pointers.end());
+        return true;
+    }
+
+    bool Match(DWORD rva, const NativeEntryFingerprint& pattern)
+    {
+        if (!pattern.length || pattern.length > 65536 || !image.Section(rva, pattern.length, true)) return false;
+        const auto extent = extents.find(rva);
+        if (pattern.unwind ? extent == extents.end() || extent->second != pattern.length : extent != extents.end())
+            return false;
+        const auto key = (static_cast<std::uint64_t>(rva) << 32) | pattern.length;
+        auto it = hashes.find(key);
+        if (it == hashes.end()) {
+            std::array<unsigned char, 32> digest{};
+            if (!HashBytes(image.bytes + rva, pattern.length, digest)) return false;
+            it = hashes.emplace(key, digest).first;
+        }
+        return std::equal(it->second.begin(), it->second.end(), pattern.sha256);
+    }
+};
+
+bool SameContract(const NativeAbiDescriptor& a, const NativeAbiDescriptor& b,
+    const NativeAbiLayout& x, const NativeAbiLayout& y)
+{
+    return a.actions_table == b.actions_table && a.window_table == b.window_table &&
+        a.lookup == b.lookup && a.accessor_rule == b.accessor_rule &&
+        std::equal(std::begin(a.methods), std::end(a.methods), std::begin(b.methods)) &&
+        x.actions == y.actions && x.tabs == y.tabs && x.active == y.active;
+}
+
+} // namespace
+
+bool RecognizeNativeAbi(const unsigned char* bytes, std::size_t size, std::uintptr_t base,
+    NativeAbiDescriptor& descriptor, NativeAbiLayout& layout)
 {
     descriptor = {};
     layout = {};
-    if (matched) *matched = nullptr;
-    NativeImageIdentity identity;
-    if (!profiles || !InspectNativeImage(bytes, size, identity)) return false;
-    bool exact_identity = false;
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto& candidate = profiles[i].descriptor;
-        if (!InlineIsEqualGUID(identity.pdb, candidate.image.pdb) ||
-            identity.age != candidate.image.age || identity.size != candidate.image.size) continue;
-        exact_identity = true;
-        if (!ValidateNativeAbi(bytes, size, base, candidate, layout)) continue;
-        descriptor = candidate;
-        if (matched) *matched = profiles + i;
-        return true;
-    }
-    // A known identity with a failed contract is not an unknown-version upgrade.
-    if (exact_identity || !file_version) return false;
     NativeImageView image{bytes, size};
-    if (!image.Open()) return false;
-    std::vector<const NativeAbiProfile*> candidates;
-    for (std::size_t i = 0; i < count; ++i) {
-        if (profiles[i].file_version && profiles[i].file_version <= file_version)
-            candidates.push_back(profiles + i);
+    NativeImageIdentity identity;
+    if (size > 64 * 1024 * 1024 || !image.Open() || !InspectNativeImage(bytes, size, identity)) return false;
+    if (!base) base = static_cast<std::uintptr_t>(image.nt->OptionalHeader.ImageBase);
+    PatternScan scan{image, base};
+    if (!scan.Prepare()) return false;
+    std::size_t family_count = 0;
+    const auto families = BuiltinNativeAbiFamilies(family_count);
+    NativeAbiDescriptor accepted;
+    NativeAbiLayout accepted_layout;
+    bool found = false;
+    for (const auto& p : scan.pointers) {
+        // Every table has a function pointer in slot 8; no fixture address or
+        // version hint is needed to nominate it as the data-accessor candidate.
+        if (p.first < 8 * 8) continue;
+        const auto extent = scan.extents.find(p.second);
+        if (extent == scan.extents.end()) continue;
+        for (std::size_t f = 0; f < family_count; ++f) {
+            const auto& family = families[f];
+            if (extent->second != family.accessor_length) continue;
+            NativeAbiDescriptor candidate;
+            candidate.image = identity;
+            candidate.actions_table = p.first - 8 * 8;
+            candidate.accessor_rule = family.rule;
+            if (!image.Section(candidate.actions_table, 13 * 8, false)) continue;
+            bool entries_valid = true;
+            for (unsigned slot = 0; slot < 13; ++slot) {
+                if (!scan.Pointer(Read<std::uint64_t>(bytes + candidate.actions_table + slot * 8),
+                    candidate.methods[slot])) { entries_valid = false; break; }
+            }
+            if (!entries_valid || family.lookup_operand + 4 > extent->second) continue;
+            const auto call = static_cast<std::int64_t>(p.second) + family.lookup_operand + 4;
+            const auto target = call + Read<std::int32_t>(bytes + p.second + family.lookup_operand);
+            if (target < 0 || target > MAXDWORD) continue;
+            candidate.lookup = static_cast<DWORD>(target);
+            NativeAbiLayout decoded;
+            if (!detail::CheckAccessor(image, candidate, decoded)) continue;
+            for (std::size_t v = 0; v < family.count; ++v) {
+                const auto& variant = family.variants[v];
+                bool matches = true;
+                for (unsigned slot = 0; slot < 13; ++slot) {
+                    if (slot != 8 && !scan.Match(candidate.methods[slot], variant.entries[slot])) {
+                        matches = false; break;
+                    }
+                }
+                if (!matches) continue;
+                DWORD window_table = 0;
+                for (const auto& w : scan.pointers) {
+                    if (!scan.Match(w.second, variant.window_entry)) continue;
+                    if (window_table && window_table != w.first) return false;
+                    window_table = w.first;
+                }
+                if (!window_table) continue;
+                candidate.window_table = window_table;
+                if (found && !SameContract(accepted, candidate, accepted_layout, decoded)) return false;
+                accepted = candidate;
+                accepted_layout = decoded;
+                found = true;
+            }
+        }
     }
-    std::stable_sort(candidates.begin(), candidates.end(), [](const auto a, const auto b) {
-        return a->file_version > b->file_version;
-    });
-    for (const auto profile : candidates) {
-        if (!EntryFingerprintsMatch(image, *profile)) continue;
-        auto candidate = profile->descriptor;
-        candidate.image = identity;
-        if (!ValidateNativeAbi(bytes, size, base, candidate, layout)) continue;
-        descriptor = candidate;
-        if (matched) *matched = profile;
-        return true;
-    }
-    return false;
+    if (!found) return false;
+    descriptor = accepted;
+    layout = accepted_layout;
+    return true;
 }
 
 } // namespace quickky

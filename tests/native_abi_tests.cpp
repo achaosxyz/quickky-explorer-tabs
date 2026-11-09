@@ -1,3 +1,4 @@
+#include "abi_reference/profile.h"
 #include "explorer/native_abi.h"
 
 #include <algorithm>
@@ -85,6 +86,128 @@ void ChangeIdentity(std::vector<unsigned char>& image, const quickky::NativeImag
         Write(image.data() + entries[i].AddressOfRawData + 4, identity.pdb);
         Write(image.data() + entries[i].AddressOfRawData + 20, identity.age);
     }
+}
+
+void CheckModeRecognition(const std::vector<unsigned char>& original,
+    const quickky::NativeAbiProfile* oracle, bool unsupported)
+{
+    quickky::NativeAbiDescriptor selected;
+    quickky::NativeAbiLayout layout;
+    const auto recognized = quickky::RecognizeNativeAbi(original.data(), original.size(), 0, selected, layout);
+    if (unsupported) {
+        Check(!recognized && !selected.accessor_rule && !layout.actions,
+            "excluded or missing-interface reference fails closed under mode recognition");
+        return;
+    }
+    if (!oracle) return; // No claim that the local machine is a reviewed fixture.
+    Check(recognized, "recognize reference code without fixture identity, version or locators as input");
+    if (!recognized) return;
+    std::cout << "Mode recognition exercised: rule " << selected.accessor_rule << '\n';
+    quickky::NativeAbiLayout expected;
+    const auto& abi = oracle->descriptor;
+    Check(quickky::ValidateNativeAbi(original.data(), original.size(), 0, abi, expected), "independent fixture oracle");
+    Check(selected.window_table == abi.window_table && selected.actions_table == abi.actions_table &&
+        selected.lookup == abi.lookup && selected.accessor_rule == abi.accessor_rule &&
+        std::equal(std::begin(selected.methods), std::end(selected.methods), std::begin(abi.methods)) &&
+        layout.actions == expected.actions && layout.tabs == expected.tabs && layout.active == expected.active,
+        "discovered entries, both tables, lookup and fields equal the independent oracle");
+    auto image = original;
+    auto identity = abi.image;
+    identity.pdb.Data1 ^= 0x13579bdf;
+    ++identity.age;
+    ChangeIdentity(image, identity);
+    Headers(image)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE] = {};
+    Check(quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) &&
+        InlineIsEqualGUID(selected.image.pdb, identity.pdb) && selected.image.age == identity.age,
+        "mode recognition ignores unknown identity and missing version resource");
+    // Exhaustive mutation cases run once, not once per identical method family.
+    if (!InlineIsEqualGUID(abi.image.pdb, BaselineAbi().image.pdb)) return;
+    for (unsigned slot = 0; slot < 13; ++slot) {
+        image = original;
+        image[abi.methods[slot]] ^= 1;
+        Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) &&
+            !selected.actions_table && !layout.active, "every typed entry remains mandatory");
+    }
+    image = original;
+    Headers(image)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].Size = MAXDWORD;
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "mode scanning rejects an out-of-bounds unwind directory");
+    image = original;
+    Write<DWORD>(image.data() + abi.methods[8] + 0x60, 0);
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "normalized lookup call still has to resolve to the reviewed lookup contract");
+    image = original;
+    const auto window_entry = Read<std::uint64_t>(image.data() + abi.window_table) -
+        Headers(image)->OptionalHeader.ImageBase;
+    image[static_cast<std::size_t>(window_entry) + 15] ^= 1;
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "window leaf fingerprint includes the complete return, not just a prefix");
+    image = original;
+    const auto old_size = image.size();
+    image.resize(old_size + 0x1000);
+    auto nt = Headers(image);
+    auto section = IMAGE_FIRST_SECTION(nt) + nt->FileHeader.NumberOfSections;
+    Check(reinterpret_cast<unsigned char*>(section + 1) <= image.data() + nt->OptionalHeader.SizeOfHeaders,
+        "synthetic readonly section fits the existing header allocation");
+    *section = {};
+    section->VirtualAddress = static_cast<DWORD>(old_size);
+    section->Misc.VirtualSize = section->SizeOfRawData = 0x1000;
+    section->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_INITIALIZED_DATA;
+    ++nt->FileHeader.NumberOfSections;
+    nt->OptionalHeader.SizeOfImage = static_cast<DWORD>(image.size());
+    auto unique = image;
+    std::copy_n(original.data() + abi.actions_table, 13 * 8, image.data() + old_size);
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) && !layout.actions,
+        "two valid actions tables are ambiguous, not first-match wins");
+    image = unique;
+    std::copy_n(original.data() + abi.window_table, 8, image.data() + old_size);
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "two matching window-table pointers are ambiguous");
+    image = unique;
+    std::copy_n(original.data() + abi.actions_table, 13 * 8, image.data() + old_size);
+    std::fill_n(image.data() + abi.actions_table, 13 * 8, static_cast<unsigned char>(0));
+    std::copy_n(original.data() + abi.window_table, 8, image.data() + old_size + 0x100);
+    std::fill_n(image.data() + abi.window_table, 8, static_cast<unsigned char>(0));
+    Check(quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) &&
+        selected.actions_table == old_size && selected.window_table == old_size + 0x100,
+        "both tables relocate and image size changes without a new DLL map");
+
+    // A small PE can otherwise expand into millions of tree nodes before the
+    // readonly-section scan budget is checked. Retain real entries and append
+    // unique one-byte ranges so contract recognition would still succeed without
+    // an explicit exception-entry budget checked before index allocation.
+    constexpr std::size_t excessive_count = 65537;
+    const auto directory = Headers(image)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
+    const auto original_count = directory.Size / sizeof(RUNTIME_FUNCTION);
+    const auto extra_size = (excessive_count * sizeof(RUNTIME_FUNCTION) + 4095) & ~std::size_t{4095};
+    image = original;
+    image.resize(old_size + extra_size);
+    nt = Headers(image);
+    section = IMAGE_FIRST_SECTION(nt) + nt->FileHeader.NumberOfSections;
+    *section = {};
+    section->VirtualAddress = static_cast<DWORD>(old_size);
+    section->Misc.VirtualSize = section->SizeOfRawData = static_cast<DWORD>(extra_size);
+    section->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_INITIALIZED_DATA;
+    ++nt->FileHeader.NumberOfSections;
+    nt->OptionalHeader.SizeOfImage = static_cast<DWORD>(image.size());
+    auto functions = reinterpret_cast<RUNTIME_FUNCTION*>(image.data() + old_size);
+    std::copy_n(original.data() + directory.VirtualAddress, directory.Size, image.data() + old_size);
+    std::vector<DWORD> starts;
+    for (std::size_t i = 0; i < original_count; ++i) starts.push_back(functions[i].BeginAddress);
+    for (const auto method : abi.methods) starts.push_back(method);
+    starts.push_back(static_cast<DWORD>(window_entry));
+    std::sort(starts.begin(), starts.end());
+    const auto text = IMAGE_FIRST_SECTION(nt);
+    DWORD next = text->VirtualAddress;
+    for (std::size_t i = original_count; i < excessive_count; ++i) {
+        while (std::binary_search(starts.begin(), starts.end(), next)) ++next;
+        functions[i] = {next, next + 1, 0};
+        ++next;
+    }
+    nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION] =
+        {static_cast<DWORD>(old_size), static_cast<DWORD>(excessive_count * sizeof(RUNTIME_FUNCTION))};
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) && !layout.actions,
+        "reject excessive exception entries before allocating the function index");
 }
 
 void CheckCatalogSelection(const std::vector<unsigned char>& original)
@@ -545,6 +668,11 @@ void CheckVerifiedImage(const std::vector<unsigned char>& original)
     Write<std::uint64_t>(image.data() + descriptor.actions_table + 8 * 8,
         Headers(image)->OptionalHeader.ImageBase + 0x1000);
     Check(Valid(image, descriptor), "accept relocated accessors with matching contracts and RVAs");
+    quickky::NativeAbiDescriptor discovered;
+    quickky::NativeAbiLayout discovered_layout;
+    Check(quickky::RecognizeNativeAbi(image.data(), image.size(), 0, discovered, discovered_layout) &&
+        discovered.methods[8] == 0x1000 && discovered.lookup == 0x2000,
+        "discover relocated accessors without a supplied relinked map");
     const quickky::NativeAbiProfile relocated[]{
         {"old-locators", BaselineAbi()}, {"synthetic-relink", descriptor}};
     quickky::NativeAbiDescriptor selected;
@@ -583,6 +711,7 @@ int wmain(int argc, wchar_t** argv)
     }
     if (argc == 3 && !expect_unsupported)
         Check(registered != nullptr, "explicit image fixture has a reviewed version map");
+    CheckModeRecognition(image, registered, expect_unsupported);
     const auto previous_module = GetModuleHandleW(L"ExplorerFrame.dll");
     const auto report = quickky::InspectNativeAbiFile(path.c_str());
     Check(report.inspected && report.file_version != 0,
@@ -630,6 +759,11 @@ int wmain(int argc, wchar_t** argv)
         if (module && information.lpBaseOfDll) {
             Check(reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll) != preferred,
                 "exercise diagnostic reuse with a genuinely relocated module");
+            Check(quickky::RecognizeNativeAbi(static_cast<unsigned char*>(information.lpBaseOfDll),
+                information.SizeOfImage, reinterpret_cast<std::uintptr_t>(information.lpBaseOfDll), selected, loaded_layout) &&
+                selected.actions_table == registered->descriptor.actions_table &&
+                selected.window_table == registered->descriptor.window_table,
+                "mode recognition directly handles a nonpreferred actual ASLR base");
             const auto reused = quickky::InspectNativeAbiFile(path.c_str());
             Check(reused.inspected && reused.supported && reused.file_version == version,
                 "diagnostic handles an already-loaded ASLR image without preferred-base false negatives");

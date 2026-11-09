@@ -44,10 +44,14 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   Synthetic PE records check unique valid identities and empty outputs on failure
   on every host. Test-owned memory covers readable, execute-only, guarded,
   inaccessible, copy-on-write, reserved, and region-boundary cases.
-  When the verified system image is available, private byte-buffer fixtures check
-  catalog selection/order, rejected unknown identities/rules, a separately
-  registered synthetic identity, relocated accessors, decoded field changes, and
-  accepted diagnostic immediates with rejected instruction/call opcode changes.
+  Each registered reference image is recognized by code mode before its exact
+  addresses and layout are compared with the independent `abi_reference/` oracle.
+  Unknown identities and missing version resources must not veto that match.
+  The verified baseline additionally exercises relocated tables/accessors,
+  ambiguous tables, every damaged typed entry, complete window-entry return,
+  malformed unwind data, decoded field changes and diagnostic immediates with
+  rejected instruction/call opcode changes. Legacy catalog/fallback tests remain
+  in the test-only library; no such selector is linked into production.
   Other hosts report those positive cases as unavailable rather than claiming
   compatibility. No test downloads or parses PDBs, starts a resolver worker, or
   attaches to Explorer. Synthetic maps do not establish another OS's compatibility.

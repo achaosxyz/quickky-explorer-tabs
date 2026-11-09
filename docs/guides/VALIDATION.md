@@ -45,9 +45,30 @@ isolation from a fixed-duration message pump.
 For each locally archived supported native image, run
 `QuickkyNativeAbiTests.exe --image PATH` in both configurations. Run `--unsupported-image PATH` for the
 excluded compact-accessor images and images confirmed to lack transfer interfaces.
-These checks inspect image resources, catalog selection, strict fallback, layout
-and malformed-code rejection in the fixture process. They do not attach to
+These checks independently compare mode-discovered tables, entries and derived
+fields with exact-image oracles. Unknown identity/missing-version, relocated
+tables/accessors, duplicate candidates and damaged typed entries are synthetic
+cases, not compatibility claims for an untested Windows build. The old exact-map
+selection/fallback checks remain test-only regression oracles, not product logic.
+They do not attach to
 Explorer or establish live transfer compatibility.
+
+With the retained local acquisition inventories, run the whole evidence set:
+
+```powershell
+scripts/Test-NativeAbiSamples.ps1 -Configuration Debug
+scripts/Test-NativeAbiSamples.ps1 -Configuration Release
+```
+
+The script requires the matching built test executable and ignored research
+artifacts. It exercises every registered reference and explicit exclusion or
+missing-interface sample, but skips failed acquisitions. It requires each
+registered fixture exactly once and checks the image bytes against the inventory
+checksum before counting it as evidence for that version. The negative version
+set and its categories must match `tests/abi_reference/rejections.json` exactly;
+omitting, duplicating or relabeling a required negative is an error. It downloads nothing.
+Production binaries must not link `quickky_abi_reference`; build with
+`-DBUILD_TESTING=OFF` to verify that fixture locators are unnecessary.
 
 Read-only snapshot/observation may run on the development desktop. Confirm the
 output contains no captions or folder paths, diagnostic managed count remains zero,
