@@ -17,6 +17,9 @@ struct FolderSelection {
     OwnedPidl focused;
 };
 
+// Resolve the Shell browser service, not a guessed direct interface on the host.
+// This read-only resolver is also used by the native-host diagnostic.
+HRESULT ResolveNativeFolderView(IUnknown* host, IFolderView** view);
 bool SameSelection(const FolderSelection& left, const FolderSelection& right);
 bool SelectionRestored(const FolderSelection& expected, const FolderSelection& actual);
 bool EncodeSelection(const FolderSelection& selection, void* bytes, std::size_t capacity,

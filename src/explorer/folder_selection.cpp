@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 #include <wrl/client.h>
+#include <servprov.h>
+#include <shlguid.h>
 
 namespace quickky {
 namespace {
@@ -147,6 +149,23 @@ HRESULT ReadSelection(IFolderView* view, PCIDLIST_ABSOLUTE folder, FolderSelecti
         CheckFolder(view, folder) != S_OK) return E_PENDING;
     selection = std::move(captured);
     return S_OK;
+}
+
+HRESULT ResolveNativeFolderView(IUnknown* host, IFolderView** view)
+{
+    if (!view) return E_POINTER;
+    *view = nullptr;
+    if (!host) return E_INVALIDARG;
+    ComPtr<IServiceProvider> services;
+    auto result = host->QueryInterface(IID_PPV_ARGS(&services));
+    if (FAILED(result)) return result;
+    ComPtr<IShellBrowser> browser;
+    result = services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser));
+    if (FAILED(result)) return result;
+    ComPtr<IShellView> active;
+    result = browser->QueryActiveShellView(&active);
+    if (FAILED(result) || !active) return E_PENDING;
+    return active->QueryInterface(IID_PPV_ARGS(view));
 }
 
 HRESULT RestoreSelection(IFolderView* view, PCIDLIST_ABSOLUTE folder,

@@ -45,6 +45,9 @@ someone else's session. Never terminate Explorer to clean up a test.
    frame is not automatically retried during the current enablement session.
 8. Close only the test-owned windows whose contents are still within the test
    scope. Record any unexpected window instead of guessing its ownership.
+   A close request may remove only the active native tab. Re-enumerate and
+   revalidate every remaining view before closing another tab; do not infer
+   complete cleanup from one accepted close request.
 
 For a minimal manual transport/ABI check, stop the controller first and use:
 
@@ -58,6 +61,22 @@ confirms the destination's selected GUID, PIDL and restored file selection, and
 removes one unchanged active source GUID/folder/selection. It is not a discovery
 tool or a general compatibility test.
 Do not substitute any pre-existing daily Explorer HWNDs.
+
+### Read-only native-host check
+
+```powershell
+.\build\vs2017-tabs\Debug\QTabsFolderSelectionTests.exe --native-views
+```
+
+Run this on the affected machine before changing the resident application. It
+uses Shell automation to read existing eligible native hosts, then runs the same
+`IServiceProvider`/`SID_STopLevelBrowser` service resolver and selection reader
+used by the native adapter, without assuming direct `IShellBrowser` or embedded
+`IExplorerBrowser` support on the browser object.
+It prints interface HRESULTs and counts, not paths/captions, and performs no
+injection, navigation, selection writes, activation or window closure. At least
+one eligible native view must be present. This verifies the native-host interface
+boundary only; mutating transfer acceptance still requires the scoped procedure.
 
 ### Owned public Shell-view check
 

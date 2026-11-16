@@ -4,7 +4,11 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <cwchar>
+#include <exdisp.h>
 #include <iostream>
+#include <servprov.h>
+#include <shlguid.h>
 #include <stdexcept>
 #include <string>
 #include <wrl.h>
@@ -81,7 +85,8 @@ public:
 #pragma warning(push)
 #pragma warning(disable: 4996)
 class View final : public RuntimeClass<RuntimeClassFlags<ClassicCom>,
-    ChainInterfaces<IFolderView2, IFolderView>, ChainInterfaces<IPersistFolder2, IPersistFolder, IPersist>> {
+    ChainInterfaces<IFolderView2, IFolderView>, ChainInterfaces<IPersistFolder2, IPersistFolder, IPersist>,
+    ChainInterfaces<IShellView, IOleWindow>> {
 public:
     unsigned folder = 70;
     std::vector<unsigned> selected;
@@ -156,33 +161,61 @@ public:
     HRESULT STDMETHODCALLTYPE SetRedraw(BOOL) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE IsMoveInSameFolder() override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE DoRename() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetWindow(HWND* window) override { *window = nullptr; return S_OK; }
+    HRESULT STDMETHODCALLTYPE ContextSensitiveHelp(BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE TranslateAccelerator(MSG*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE EnableModeless(BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE UIActivate(UINT) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE Refresh() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE CreateViewWindow(IShellView*, LPCFOLDERSETTINGS, IShellBrowser*, RECT*, HWND*) override
+    { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE DestroyViewWindow() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetCurrentInfo(LPFOLDERSETTINGS) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE AddPropertySheetPages(DWORD, LPFNSVADDPROPSHEETPAGE, LPARAM) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SaveViewState() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SelectItem(PCUITEMID_CHILD, SVSIF) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetItemObject(UINT, REFIID, void**) override { return E_NOTIMPL; }
 };
 #pragma warning(pop)
 
-class Browser final : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IExplorerBrowser> {
+// The Shell browser service is distinct from the opaque native tab browser.
+class ShellBrowser final : public RuntimeClass<RuntimeClassFlags<ClassicCom>, ChainInterfaces<IShellBrowser, IOleWindow>> {
 public:
     ComPtr<View> current;
     std::function<void()> after_get;
-    HRESULT STDMETHODCALLTYPE GetCurrentView(REFIID iid, void** out) override
+    HRESULT STDMETHODCALLTYPE QueryActiveShellView(IShellView** out) override
     {
-        const auto result = current.CopyTo(iid, out);
+        const auto result = current.CopyTo(out);
         if (after_get) after_get();
         return result;
     }
-    HRESULT STDMETHODCALLTYPE Initialize(HWND, const RECT*, const FOLDERSETTINGS*) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE Destroy() override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetRect(HDWP*, RECT) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetPropertyBag(LPCWSTR) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetEmptyText(LPCWSTR) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetFolderSettings(const FOLDERSETTINGS*) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE Advise(IExplorerBrowserEvents*, DWORD*) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE Unadvise(DWORD) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetOptions(EXPLORER_BROWSER_OPTIONS) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetOptions(EXPLORER_BROWSER_OPTIONS*) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE BrowseToIDList(PCUIDLIST_RELATIVE, UINT) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE BrowseToObject(IUnknown*, UINT) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE FillFromObject(IUnknown*, EXPLORER_BROWSER_FILL_FLAGS) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE RemoveAll() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetWindow(HWND* window) override { *window = nullptr; return S_OK; }
+    HRESULT STDMETHODCALLTYPE ContextSensitiveHelp(BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE InsertMenusSB(HMENU, LPOLEMENUGROUPWIDTHS) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetMenuSB(HMENU, HOLEMENU, HWND) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE RemoveMenusSB(HMENU) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetStatusTextSB(LPCWSTR) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE EnableModelessSB(BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE TranslateAcceleratorSB(MSG*, WORD) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE BrowseObject(PCUIDLIST_RELATIVE, UINT) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetViewStateStream(DWORD, IStream**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetControlWindow(UINT, HWND*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SendControlMsg(UINT, UINT, WPARAM, LPARAM, LRESULT*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE OnViewWindowActive(IShellView*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetToolbarItems(LPTBBUTTONSB, UINT, UINT) override { return E_NOTIMPL; }
+};
+
+// Native tab browsers expose the service, not direct browser/control interfaces.
+class Browser final : public RuntimeClass<RuntimeClassFlags<ClassicCom>, IServiceProvider> {
+public:
+    ComPtr<ShellBrowser> shell = Make<ShellBrowser>();
+    HRESULT STDMETHODCALLTYPE QueryService(REFGUID service, REFIID iid, void** out) override
+    {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (!IsEqualGUID(service, SID_STopLevelBrowser)) return E_NOINTERFACE;
+        return shell.CopyTo(iid, out);
+    }
 };
 
 struct NativeTab { void* browser; void* site; GUID id; std::uint64_t flags; };
@@ -227,8 +260,8 @@ struct FrameCase {
         root = CreateWindowW(type.lpszClassName, L"Selection fixture", WS_OVERLAPPEDWINDOW,
             -30000, -30000, 320, 240, nullptr, nullptr, type.hInstance, nullptr);
         Check(root != nullptr, "Create owned native-frame fixture");
-        browser->current = view;
-        tab = {static_cast<IExplorerBrowser*>(browser.Get()), nullptr, {1}, 0};
+        browser->shell->current = view;
+        tab = {static_cast<IServiceProvider*>(browser.Get()), nullptr, {1}, 0};
         table[2] = reinterpret_cast<void*>(&ReleaseActions);
         table[4] = reinterpret_cast<void*>(&RemoveTab); table[8] = reinterpret_cast<void*>(&ReadTab);
         actions = {table, &tab, &tab + 1, tab.browser, view.Get(), 0};
@@ -247,6 +280,12 @@ void TestFrameSelectionGuards()
     GUID active{};
     FolderLocation folder;
     FolderSelection captured;
+    ComPtr<IExplorerBrowser> embedded;
+    Check(fixture.browser.As(&embedded) == E_NOINTERFACE,
+        "Native-host fixture must reject the embedded IExplorerBrowser interface");
+    ComPtr<IShellBrowser> direct;
+    Check(fixture.browser.As(&direct) == E_NOINTERFACE,
+        "Native-host fixture must require the Shell browser service, not a direct interface");
     Check(fixture.frame->CaptureSelection(tabs, active, folder, captured) == S_OK &&
         SameSelection(captured, Selection({2, 3}, 3)), "Capture via active browser public view");
     bool applied = false;
@@ -277,12 +316,12 @@ void TestFrameSelectionGuards()
     auto location = Child(70);
     replaced.view->selected = {9};
     auto replacement = Make<View>();
-    replaced.view->after_write = [&] { replaced.browser->current = replacement; };
+    replaced.view->after_write = [&] { replaced.browser->shell->current = replacement; };
     applied = false;
     Check(replaced.frame->RestoreSelection(replaced.tab.id, location.get(), expected, applied, [] { return true; }) == E_ABORT &&
         replaced.view->writes == 1 && !replacement->writes, "Reentrant view replacement cannot receive subsequent writes");
     FrameCase switched;
-    switched.browser->after_get = [&] { switched.tab.id = GUID{2}; };
+    switched.browser->shell->after_get = [&] { switched.tab.id = GUID{2}; };
     Check(switched.frame->CaptureSelection(tabs, active, folder, captured) == E_ABORT,
         "A source tab change during a public view call invalidates capture");
 }
@@ -540,6 +579,52 @@ void TestOwnedShellViews()
     Check(no_items.selected.empty() && !no_items.focused, "Empty public view reports no selection or focus");
     std::cout << "Owned public Shell view transfer passed\n";
 }
+// Explicit read-only local diagnostic. No hook, navigation, selection write,
+// activation or window-close call is made on an enumerated native Explorer host.
+void TestNativeViewsReadOnly()
+{
+    ComPtr<IShellWindows> windows;
+    Check(SUCCEEDED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&windows))),
+        "Read-only native Shell enumeration");
+    long count = 0;
+    Check(SUCCEEDED(windows->get_Count(&count)), "Read native Shell view count");
+    unsigned checked = 0;
+    for (long i = 0; i < count && checked < 32; ++i) {
+        VARIANT index{};
+        index.vt = VT_I4; index.lVal = i;
+        ComPtr<IDispatch> dispatch;
+        ComPtr<IWebBrowserApp> window;
+        SHANDLE_PTR handle = 0;
+        if (FAILED(windows->Item(index, &dispatch)) || !dispatch || FAILED(dispatch.As(&window)) ||
+            FAILED(window->get_HWND(&handle))) continue;
+        wchar_t kind[64]{};
+        if (!GetClassNameW(reinterpret_cast<HWND>(handle), kind, 64) || std::wcscmp(kind, L"CabinetWClass")) continue;
+        ComPtr<IServiceProvider> services;
+        ComPtr<IShellBrowser> host;
+        Check(SUCCEEDED(window.As(&services)) &&
+            SUCCEEDED(services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&host))), "Resolve native Shell host");
+        ComPtr<IFolderView> view;
+        const auto resolved = ResolveNativeFolderView(window.Get(), &view);
+        Check(resolved == S_OK, "Production native-view resolver failed on this machine");
+        ComPtr<IPersistFolder2> persist;
+        Check(SUCCEEDED(view->GetFolder(IID_PPV_ARGS(&persist))), "Read native view folder");
+        PIDLIST_ABSOLUTE raw = nullptr;
+        Check(SUCCEEDED(persist->GetCurFolder(&raw)) && raw, "Read native folder identity");
+        OwnedPidl folder(raw);
+        if (!DescribeFolder(OwnedPidl(ILCloneFull(folder.get())))) continue;
+        FolderSelection selection;
+        const auto captured = ReadSelection(view.Get(), folder.get(), selection);
+        ComPtr<IExplorerBrowser> embedded;
+        const auto control = host.As(&embedded);
+        std::cout << "native-view=" << checked << " embedded-interface=0x" << std::hex <<
+            static_cast<unsigned long>(control) << " selection=0x" << static_cast<unsigned long>(captured) <<
+            std::dec << " selected=" << selection.selected.size() << "\n";
+        Check(captured == S_OK, "Native view selection capture failed on this machine");
+        ++checked;
+    }
+    Check(checked != 0, "No eligible native Explorer views for read-only diagnostic");
+    std::cout << "Read-only native Explorer views passed: " << checked << "\n";
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -549,6 +634,7 @@ int main(int argc, char** argv)
         Check(SUCCEEDED(initialized), "Initialize test-only COM apartment");
         TestEncoding(); TestRestore(); TestReentrancyAndDeferredConfirmation(); TestStability(); TestFrameSelectionGuards();
         if (argc == 2 && std::strcmp(argv[1], "--shell-view") == 0) TestOwnedShellViews();
+        else if (argc == 2 && std::strcmp(argv[1], "--native-views") == 0) TestNativeViewsReadOnly();
         CoUninitialize();
         std::cout << "Folder selection tests passed\n";
         return 0;

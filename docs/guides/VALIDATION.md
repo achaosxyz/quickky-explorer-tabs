@@ -46,7 +46,11 @@ foreground activation under Windows policy.
 view readiness, apply-once restoration, source-state checks and cancellation
 using fake public views and typed native-frame fixtures. Its optional
 `--shell-view` mode uses test-owned public Shell controls and temporary files,
-not native Explorer attachment; see [Explorer testing](EXPLORER_TESTING.md).
+not native Explorer attachment. Use `--native-views` on the affected machine to
+verify the production view resolver against existing native hosts without any
+hook or selection write. The native-host fixtures expose a separate Shell browser
+service and reject direct `IShellBrowser` and embedded `IExplorerBrowser`
+queries on the opaque browser; see [Explorer testing](EXPLORER_TESTING.md).
 `hook.staging` injects a failed runtime copy after creating a partial destination
 and requires cleanup of that file and its per-attempt directory. Discovery tests
 count deferred enumerations with controlled event/callback delivery, separate

@@ -128,13 +128,12 @@ HRESULT NativeFrame::ActiveView(IFolderView** view) const
     const auto bytes = static_cast<const unsigned char*>(actions_);
     const auto active = *reinterpret_cast<IUnknown* const*>(bytes + layout_.active);
     if (!active) return E_PENDING;
-    // The already-matched active browser is a COM object. Query its public
-    // interface rather than introducing a private view/member offset.
-    Microsoft::WRL::ComPtr<IExplorerBrowser> browser;
-    if (FAILED(active->QueryInterface(IID_PPV_ARGS(&browser)))) return E_NOINTERFACE;
+    // Resolve the browser's Shell service, not a guessed direct interface on
+    // the opaque active browser. Embedded-control fixtures cannot prove this path.
+    Microsoft::WRL::ComPtr<IFolderView> current;
+    const auto result = ResolveNativeFolderView(active, &current);
     if (!Valid() || !available_ || !available_()) return E_ABORT;
-    const auto result = browser->GetCurrentView(IID_PPV_ARGS(view));
-    return SUCCEEDED(result) ? result : E_PENDING;
+    return FAILED(result) ? result : current.CopyTo(view);
 }
 
 HRESULT NativeFrame::CaptureSelection(std::vector<GUID>& tabs, GUID& active,

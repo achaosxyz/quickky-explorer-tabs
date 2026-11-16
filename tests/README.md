@@ -69,11 +69,20 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   check selected/focused child PIDL encoding, empty/multiple selection, strict
   bounds and malformed input, delayed view/item readiness, apply-once confirmation,
   source selection/focus revalidation, cancellation, tab/view replacement and
-  reentrant writes. A failed focus read is not treated as absent focus. Clock-only
+  reentrant writes. Native-frame fixtures expose a separate `IShellBrowser`
+  service through `IServiceProvider`/`SID_STopLevelBrowser` and explicitly reject
+  direct `IShellBrowser` and `IExplorerBrowser` queries on the opaque browser,
+  matching the native-host service contract rather than an embedded control.
+  A failed focus read is not treated as absent focus. Clock-only
   checks cover stable capture and initially empty selection grace. This does not
   exercise real Explorer IPC or native transfer. The optional `--shell-view` mode
   uses hidden public ExplorerBrowser controls owned by the test process and
   freshly created temporary files; it does not attach to Explorer or daily windows.
+  The separate `--native-views` mode reads existing eligible native Explorer hosts
+  through Shell automation and the production native-view resolver, including
+  selection/focus reads. It logs status/counts only, never paths or captions, and
+  does not hook, navigate, activate, select or close those windows. Neither mode
+  establishes end-to-end native tab-transfer acceptance.
 - `workspace.performance`: counts custom publication decisions for unchanged
   passes, labels, selection, placement, external visibility, and new lifetimes.
   Hidden test-owned strips check visual-hover change detection, theme refresh,

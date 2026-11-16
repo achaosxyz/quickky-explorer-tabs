@@ -58,6 +58,8 @@ public:
     bool RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
         const FolderSelection& selection, std::uint64_t input_epoch);
     bool RevealNative(const GUID& tab);
+    // Last acknowledged native result; E_PENDING means no confirmed response.
+    HRESULT last_native_result() const noexcept { return native_result_; }
     bool AcceptInput(HWND sender, const GuardRequest& request) const;
     void Cancel() noexcept;
     bool Detach();
@@ -72,6 +74,7 @@ private:
     HANDLE completed_ = nullptr;
     NativeExchange* exchange_ = nullptr;
     std::uint64_t sequence_ = 0;
+    HRESULT native_result_ = E_PENDING;
     GuardRequest identity_;
     WindowIdentity window_;
 };

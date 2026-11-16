@@ -73,6 +73,9 @@ only a minimized destination, with best-effort foreground activation.
 Preparation carries no ABI descriptor. Commit recognizes a built-in code family
 against the loaded image and validates its accessor contract on the target thread
 before any private COM call.
+The client exposes the last acknowledged native HRESULT to the scoped transfer
+probe. An unconfirmed exchange reports `E_PENDING`, not a fabricated native
+outcome; diagnostics do not include folder paths or selection contents.
 There is no controller resolver/readiness worker, DbgHelp session, runtime PDB
 parser, symbol cache, download, or object-layout scan.
 See [native ABI adaptation](NATIVE_ABI.md).

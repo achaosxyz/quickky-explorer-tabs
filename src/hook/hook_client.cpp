@@ -175,6 +175,7 @@ bool HookClient::Healthy()
 
 bool HookClient::Exchange(GuardCommand command, NativeExchange& packet)
 {
+    native_result_ = E_PENDING;
     if (!exchange_ || !lease_ || WaitForSingleObject(lease_, 0) != WAIT_TIMEOUT) return false;
     packet.version = kGuardVersion;
     packet.request = ++sequence_;
@@ -205,6 +206,7 @@ bool HookClient::Exchange(GuardCommand command, NativeExchange& packet)
         return false;
     }
     std::memcpy(&packet, exchange_, sizeof(packet));
+    native_result_ = packet.result;
     return SUCCEEDED(packet.result);
 }
 

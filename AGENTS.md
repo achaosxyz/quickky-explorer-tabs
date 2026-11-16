@@ -45,8 +45,9 @@ visible grouping, recovery, or locale selection. The `+` requirement is to open
 the active tab's current location. Windows 10 captures the new window; Windows 11
 creates a native tab without an additional strip. Do not promise intact history
 or all view state: raw native drop semantics do not preserve them. Bounded public
-Shell-view selection compensation is separate and still needs scoped native
-end-to-end acceptance; synthetic tests alone do not prove it.
+Shell-view selection compensation is separate, with scoped local native acceptance
+for selected-file launches and explicit multi-selection/focus. Other launch routes
+remain unverified; synthetic tests alone do not prove native acceptance.
 
 ## Modules
 

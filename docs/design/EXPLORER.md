@@ -87,9 +87,15 @@ owner thread; its title and PIDL outputs use task-allocator ownership. Controlle
 scope validation remains public Shell automation. Native snapshots do not make
 cross-apartment Shell automation enumeration calls inside `WM_COPYDATA` handling.
 
-`folder_selection.h/.cpp` uses public `IExplorerBrowser::GetCurrentView` on the
-validated active browser, followed by `IFolderView` selection enumeration and focused
-item access. No additional private offsets are introduced. View-folder PIDL and
+`folder_selection.h/.cpp` resolves the validated active browser through public
+`IServiceProvider`/`SID_STopLevelBrowser`, then uses the returned `IShellBrowser`
+service's `QueryActiveShellView` and queries `IFolderView` for selection/focus.
+Neither embedded-control `IExplorerBrowser` nor direct `IShellBrowser` support
+is assumed on the opaque active browser. Browser, service and control roles
+remain distinct, matching the existing folder reader's public service path.
+Resolution is shared with the explicit read-only native-host diagnostic. It
+does not enumerate Shell automation inside the target-thread adapter. No
+additional private offsets are introduced. View-folder PIDL and
 active GUID must match before/after reentrant calls. Selection encoding rejects
 malformed, duplicate or excessive child PIDLs (256 items, 64 KiB total).
 The posted `NativeCapture` operation waits for stable source observations, giving
@@ -170,6 +176,13 @@ real Explorer installation.
 - Windows 11 build 26300 with the matched profile above: separate-process,
   multi-tab source merge into a maximized main frame, no overlay/clipping,
   current-folder `+`, Ctrl+T, and exit preservation passed.
+- The local Windows 11 native host also passed scoped manual and automatic
+  selected-file transfers using the public Shell browser service. Explicit
+  two-file selection and focused-item state survived the manual merge; automatic
+  `/select` capture restored a minimized main frame to its maximized placement.
+  Baseline windows remained unchanged, and the disposable native tabs were
+  closed after stopping the scoped controller. These cases do not establish
+  arbitrary delayed external selection requests or all file-launch routes.
 
 These cases do not establish all launch routes, DPI/theme variants, modal
 behavior, multiple monitors, or compatibility with other Explorer images.

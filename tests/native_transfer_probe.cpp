@@ -63,7 +63,8 @@ int wmain(int argc, wchar_t** argv)
     quickky::FolderSelection selection;
     std::uint64_t source_input = 0, destination_input = 0;
     ok = incoming.CaptureNative(tabs, active, folder, selection, source_input);
-    std::cout << "source.snapshot=" << ok << " count=" << tabs.size() << std::endl;
+    std::cout << "source.snapshot=" << ok << " count=" << tabs.size() << " result=0x" << std::hex
+        << static_cast<unsigned long>(incoming.last_native_result()) << std::dec << std::endl;
     if (!ok || !(probe.Inspect(destination) == destination_id) || !(probe.Inspect(source) == source_id) ||
         !eligible(destination) || !eligible(source)) return 1;
     GUID created{};

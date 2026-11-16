@@ -14,9 +14,12 @@ its Windows 11 clipping and creation-guard path is not the accepted backend.
 Native merge follows Explorer's tab-drop semantics, not an assertion that a
 browser object moves intact. A scoped cross-process native drag on the tested
 host merged the tab but lost selection and navigation history. The implementation
-now compensates for bounded file selection/focus through the public Shell view;
-this is separate from raw native drop behavior and still requires scoped native
-end-to-end acceptance. Navigation history is not preserved.
+now compensates for bounded file selection/focus through the public Shell view.
+Scoped local native-host acceptance covers selected-file launches, explicit
+multi-selection/focus, and automatic capture into a minimized main frame with
+maximized placement restored. This is separate from raw native drop behavior and
+does not verify every launch route or all view state. Navigation history is not
+preserved.
 
 This is an early preview, not complete native-tab replacement or general
 Windows 10/11 compatibility. Windows 11 uses five built-in accessor families and
@@ -166,11 +169,16 @@ pre-existing windows outside the selected test scope.
 The controller composes `WorkspaceController`, `HookClient`, and the Explorer
 adapters. Windows 11 retains a main native frame, snapshots source GUID/PIDL,
 captures a bounded file-selection/focus snapshot through the active host's public
-Shell view, uses the matched native drop-add action, confirms destination GUID/PIDL,
+`IServiceProvider`/`SID_STopLevelBrowser` service followed by
+`IShellBrowser::QueryActiveShellView` (not a direct browser/control-interface
+assumption), uses the matched native drop-add action, confirms destination GUID/PIDL,
 and restores/confirms that selection before removing the unchanged source GUID.
 Final removal rechecks source selection as well as folder/GUID. Public view access
 or restoration failure preserves the source; uncertain mutations remain quarantined.
-`folder_selection` owns view capture, bounded child-PIDL encoding and restore.
+`folder_selection` owns public native-view resolution, view capture, bounded
+child-PIDL encoding and restore. A read-only native-host diagnostic exercises
+the same resolver without attaching to or mutating Explorer; embedded Shell
+control tests alone do not establish native-host interface compatibility.
 Multiple source
 tabs are transferred over successive reconciliations. Uncertain mutation results
 quarantine the source identity rather than retry an add that may have succeeded.
