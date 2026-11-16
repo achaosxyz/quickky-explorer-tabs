@@ -9,7 +9,7 @@
 namespace quickky {
 
 constexpr ULONG_PTR kGuardProtocol = 0x514b4750;
-constexpr std::uint32_t kGuardVersion = 9;
+constexpr std::uint32_t kGuardVersion = 10;
 constexpr std::uint32_t kNativeRestoreFolderReady = 1;
 constexpr std::uint32_t kNativeRestoreWriteConsumed = 2;
 inline bool IsNativeRestoreProgress(std::uint32_t value)
@@ -84,6 +84,8 @@ struct NativeExchange {
     GUID active{};
     GUID created{};
     GUID destination_nonce{}; // NativeRemove's live destination-input fence.
+    std::uint32_t destination_pid = 0; // Foreground permission belongs to a process.
+    std::uint64_t destination_started_at = 0; // Reject a reused destination PID.
     GUID tabs[kMaxNativeTabs]{};
     std::uint32_t folder_bytes = 0;
     unsigned char folder[65536]{};

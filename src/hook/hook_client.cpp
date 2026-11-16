@@ -274,8 +274,10 @@ bool HookClient::RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
     const FolderSelection& selection, std::uint64_t input_epoch, const HookClient& destination)
 {
     NativeExchange packet;
-    if (!destination.input_changed_ || &destination == this) return false;
+    if (!destination.input_changed_ || &destination == this || !destination.window_.valid()) return false;
     packet.destination_nonce = destination.identity_.nonce;
+    packet.destination_pid = destination.window_.window.process_id;
+    packet.destination_started_at = destination.window_.window.process_started_at;
     packet.active = tab;
     packet.input_epoch = input_epoch;
     packet.folder_bytes = folder ? ILGetSize(folder) : 0;

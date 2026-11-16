@@ -4,6 +4,7 @@
 #include "explorer/native_tab_guard.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <utility>
 
@@ -359,8 +360,14 @@ void WorkspaceController::ContinueNativeTransfer(const FolderLocations& location
     native_pending_.reset();
     native_transferred_ = true;
     // Presentation cannot repeat an acknowledged source removal.
-    if (!main->RevealNative(pending->created))
-        OutputDebugStringA("QTabs: transferred tab confirmed, destination activation/focus failed\n");
+    if (!main->RevealNative(pending->created)) {
+        char diagnostic[160]{};
+        std::snprintf(diagnostic, sizeof(diagnostic),
+            "QTabs: transferred tab confirmed, destination activation/focus failed hr=0x%08lX target=%p foreground=%p\n",
+            static_cast<unsigned long>(main->last_native_result()),
+            reinterpret_cast<void*>(destination_key), static_cast<void*>(GetForegroundWindow()));
+        OutputDebugStringA(diagnostic);
+    }
 }
 
 bool WorkspaceController::Publish()

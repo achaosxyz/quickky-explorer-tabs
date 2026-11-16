@@ -226,9 +226,10 @@ HRESULT NativeFrame::Add(PCIDLIST_ABSOLUTE folder, GUID& created)
 }
 
 HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
-    const FolderSelection& expected_selection, const std::function<bool()>& unchanged)
+    const FolderSelection& expected_selection, const std::function<bool()>& unchanged,
+    const std::function<void()>& delegate_foreground)
 {
-    if (!unchanged || !unchanged()) return E_ABORT;
+    if (!unchanged || !delegate_foreground || !unchanged()) return E_ABORT;
     std::vector<GUID> captured;
     GUID selected{};
     FolderLocation location;
@@ -239,12 +240,14 @@ HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
         !ILIsEqual(location.pidl.get(), expected_folder) ||
         !SameSelection(expected_selection, current) || !unchanged()) return E_ABORT;
     // Capture already confirmed the folder/view through COM. Final active-tab
-    // validation is non-pumping: do not introduce another callout after checking
-    // selection and the source input epoch immediately before deletion.
+    // validation and foreground permission delegation are non-pumping: no public
+    // view call may revoke the handoff before the irreversible native call.
     std::vector<GUID> tabs;
     GUID active{};
     if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(tab, active) ||
         !available_ || !available_() || !unchanged()) return E_ABORT;
+    delegate_foreground();
+    if (!Valid() || !available_ || !available_() || !unchanged()) return E_ABORT;
     using Function = HRESULT (STDMETHODCALLTYPE*)(void*, GUID);
     const auto result = reinterpret_cast<Function>(original_[4])(actions_, tab);
     // A pending response is retryable only before invoking native removal.

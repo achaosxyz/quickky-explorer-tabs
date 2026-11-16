@@ -22,8 +22,9 @@ workspace, without replacing Explorer or adding a separate browsing window.
 - Windows 11 uses Explorer's native tabs; Windows 10 uses rectangular tabs.
 - Automatically collect new folder windows, excluding Control Panel and other
   system-management pages.
-- On Windows 11, collecting a new window activates the workspace and focuses the
-  new tab's file view; a minimized workspace is restored first.
+- On Windows 11, collecting a new window requests foreground activation of
+  Explorer and keyboard focus in the new tab's file view; a minimized workspace
+  is restored first.
 - Select tabs to switch folders and use the close button to close a tab.
 - Use **+** to open another tab at the active folder's **current** location.
 - Support maximize, minimize, and restore on Windows 10.

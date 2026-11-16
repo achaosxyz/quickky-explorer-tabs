@@ -56,7 +56,7 @@ therefore means unconfirmed completion, not rollback or a preserved source; the
 controller quarantines the source identity instead of retrying the mutation. Native
 commit binds a matched `NativeFrame` and current-folder input only, without a
 guard, region clipping, Quickky strip, or window visibility changes.
-Protocol version 9 carries bounded file-selection snapshots and executes
+Protocol version 10 carries bounded file-selection snapshots and executes
 `NativeCapture`/`NativeRestore` on the same posted-command path. Capture readiness
 uses a 25-ms UI timer with an 800-ms limit, below the exchange's two-second deadline;
 there are no sleeps. Source capture requires 50 ms unchanged observations and a
@@ -74,6 +74,16 @@ The destination's nonce-named input-change event stays armed from add to final
 source removal. Source-side validation checks that peer event without pumping
 after its COM reads, so target input/cancellation during those reads cannot pass
 the last pre-mutation guard. The event does not cancel an ordinary attachment.
+The remove request also carries the destination PID and process creation time.
+Before source removal, the source UI thread opens and validates that process and
+provides a non-pumping foreground-delegation callback to `NativeFrame::Remove`.
+The adapter calls it only after successful final source COM validation, immediately
+before native removal, then rechecks availability and input fences. The callback
+calls `AllowSetForegroundWindow` for that PID only, while source-side activation
+authority can still exist. No public-view COM reads follow delegation. The process handle remains open through removal to
+prevent PID reuse. This is permission delegation, not early window activation;
+the destination still reveals only after confirmed transfer. Foreground denial
+does not authorize bypasses, repeating removal or discarding confirmed progress.
 Destination restore retains an initial-folder-ready flag across controller polls;
 only the initial missing/mismatched folder may wait. A folder change after it
 was observed, an active-tab change or a canceled input token aborts. Reentrant

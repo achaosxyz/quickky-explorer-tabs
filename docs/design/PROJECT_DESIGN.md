@@ -28,7 +28,7 @@ restoration polls for its initial folder within per-command deadlines. Once that
 folder has been observed, a changed folder aborts the move.
 The controller confirms the restored destination before removing the source GUID;
 neither waiting nor a failed move permits another native add or a whole-frame close.
-Protocol 9 acknowledges each restore-readiness poll. A pending transfer retains
+Protocol 10 acknowledges each restore-readiness poll. A pending transfer retains
 the created GUID, attachment identities, original selection/input tokens and
 restore progress across controller passes. Known loading work schedules another
 100-ms pass and does not enter permanent quarantine. Incomplete public folder
@@ -39,6 +39,14 @@ remain fail-closed. Stop discards continuation state after canceling its leases.
 Every confirmed native transfer requests destination activation, whether the main
 frame is normal, maximized or minimized. Restore only minimized frames, preserving
 their prior placement, then focus the created tab's public Shell-view window.
+After final source COM validation, immediately before native removal, its UI
+thread delegates foreground permission to the
+destination process with `AllowSetForegroundWindow`. The destination PID and
+process creation time are bound to the existing peer input fence. This preserves
+eligible source-side activation permission across destruction of its last window;
+the background controller cannot substitute its own foreground authority.
+No public-view COM call follows delegation before native removal; cancellation
+fences are rechecked at this boundary.
 Focused-item restoration is not keyboard/window activation. Presentation respects
 Windows foreground policy and later destination input; failure cannot retry a
 consumed transfer. Native-host foreground/keyboard acceptance is separate from
@@ -392,7 +400,7 @@ adds these concrete contracts:
   continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window. A version-9 bounded
+  Quickky changes without closing the user's Explorer window. A version-10 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
   a per-window lifetime property and cancellation event protect local recovery.
   New input appends a bounded, validated PIDL snapshot; no native pointers cross

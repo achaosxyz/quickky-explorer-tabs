@@ -48,7 +48,11 @@ version/request/state, cancellation fences and late-completion reuse rejection.
 It does not attach to Explorer or validate native migration.
 `explorer.folder_selection` checks bounded file-selection/focus snapshots,
 view readiness, apply-once restoration, source-state checks and cancellation
-using fake public views and typed native-frame fixtures. Its optional
+using fake public views and typed native-frame fixtures.
+Foreground-delegation fixtures check that permission is requested only after
+source COM validation, no public-view COM follows the handoff, and cancellation
+still prevents removal. They do not prove native foreground permission delivery.
+Its optional
 `--shell-view` mode uses test-owned public Shell controls and temporary files,
 not native Explorer attachment. Use `--native-views` on the affected machine to
 verify the production view resolver against existing native hosts without any

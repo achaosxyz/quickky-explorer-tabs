@@ -55,7 +55,10 @@ promising intact browsing history or all view state.
 - After every confirmed native transfer, request reveal through the destination's
   bound hook client with the created GUID. Normal, maximized and minimized main
   frames all request foreground activation and file-view keyboard focus; only
-  minimized frames are restored. Ordinary reconciliation, unsupported candidates
+  minimized frames are restored. Source removal carries the bound destination
+  process identity so its Explorer process can delegate foreground permission
+  before its last window closes; the controller's background thread cannot grant
+  source-side authority after the fact. Ordinary reconciliation, unsupported candidates
   and failed/uncertain transfers never activate it. A failed reveal must not change
   confirmed progress or retry the consumed source tab.
 - Scope grouping to the current user session and active virtual desktop.

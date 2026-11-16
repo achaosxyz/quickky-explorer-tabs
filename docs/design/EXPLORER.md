@@ -131,6 +131,14 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
+Before source removal, the source hook validates the destination process identity
+and delegates foreground permission to it with `AllowSetForegroundWindow` after
+final source COM validation, immediately before calling native removal. Delegation
+is non-pumping, followed by another availability/input-fence check, not another
+public-view COM read. This
+must happen while the source can still hold activation authority: closing its last
+window can return the foreground to the launching application. Permission is
+limited to that process, never `ASFW_ANY`, and does not bypass Windows policy.
 After every confirmed source removal, the destination receives a native reveal
 request, including normal and maximized frames. On its owning UI thread, validate
 that the created GUID remains present, select and confirm it, then use `SW_RESTORE`

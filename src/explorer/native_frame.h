@@ -25,8 +25,11 @@ public:
         const FolderSelection& selection, bool& applied, bool& folder_ready,
         const std::function<bool()>& unchanged);
     HRESULT Add(PCIDLIST_ABSOLUTE folder, GUID& created);
+    // The bound source hook delegates foreground permission only after final
+    // COM validation. The callback must not pump messages or activate windows.
     HRESULT Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
-        const FolderSelection& expected_selection, const std::function<bool()>& unchanged);
+        const FolderSelection& expected_selection, const std::function<bool()>& unchanged,
+        const std::function<void()>& delegate_foreground);
     // Post-transfer activation/file-view focus in every window state. It never
     // adds, removes or retries a tab, and cannot override later destination input.
     HRESULT Reveal(const GUID& tab, const std::function<bool()>& unchanged);

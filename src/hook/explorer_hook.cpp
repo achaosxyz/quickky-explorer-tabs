@@ -385,13 +385,32 @@ void ExecuteNativeCommand()
             quickky::FolderSelection selection;
             ProcessHandle peer_input(OpenEventW(SYNCHRONIZE, FALSE,
                 quickky::NativeInputEventName(packet.destination_nonce).c_str()), CloseHandle);
-            if (peer_input && quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection))
+            ProcessHandle peer_process(packet.destination_pid ? OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, packet.destination_pid) : nullptr, CloseHandle);
+            FILETIME created{}, exited{}, kernel{}, user{};
+            const bool peer_matches = peer_process && packet.destination_started_at &&
+                GetProcessTimes(peer_process.get(), &created, &exited, &kernel, &user) &&
+                ((static_cast<std::uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime) ==
+                    packet.destination_started_at;
+            if (peer_matches && peer_input &&
+                lifetime->input_epoch == lifetime->native_input_epoch && ControllerAvailable() &&
+                WaitForSingleObject(peer_process.get(), 0) == WAIT_TIMEOUT &&
+                WaitForSingleObject(peer_input.get(), 0) == WAIT_TIMEOUT &&
+                quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection)) {
                 packet.result = lifetime->native->Remove(packet.active, folder.get(), selection,
-                    [lifetime, peer = peer_input.get()] {
+                    [lifetime, peer = peer_input.get(), process = peer_process.get()] {
                     return attachment == lifetime && ControllerAvailable() &&
                         lifetime->input_epoch == lifetime->native_input_epoch &&
+                        WaitForSingleObject(process, 0) == WAIT_TIMEOUT &&
                         WaitForSingleObject(peer, 0) == WAIT_TIMEOUT;
+                }, [pid = packet.destination_pid] {
+                    // Grant from the source process at the final non-pumping
+                    // boundary: closing its last window can return activation
+                    // to the launching browser before destination reveal runs.
+                    if (!AllowSetForegroundWindow(pid))
+                        OutputDebugStringA("QTabs: source foreground permission delegation denied\n");
                 });
+            }
         } else if (command == quickky::GuardCommand::NativeRestore) {
             quickky::FolderSelection selection;
             if (quickky::IsNativeRestoreProgress(packet.count) &&

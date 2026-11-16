@@ -315,17 +315,17 @@ void TestFrameSelectionGuards()
     Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, folder_ready, [] { return true; }) == E_ABORT,
         "Canceled lease prevents restoring");
     fixture.allowed = true;
-    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }) == E_ABORT && !fixture.actions.removals,
+    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }, [] {}) == E_ABORT && !fixture.actions.removals,
         "Changed source selection prevents source removal");
     Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, folder_ready, [] { return true; }) == S_OK,
         "Restore through the native-frame owning-thread boundary");
     fixture.view->focused = 2;
-    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }) == E_ABORT && !fixture.actions.removals,
+    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }, [] {}) == E_ABORT && !fixture.actions.removals,
         "Changed source focus also prevents removal");
     fixture.view->focused = 3;
-    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return false; }) == E_ABORT && !fixture.actions.removals,
+    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return false; }, [] {}) == E_ABORT && !fixture.actions.removals,
         "Changed source input epoch prevents deletion");
-    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }) == S_OK && fixture.actions.removals == 1,
+    Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }, [] {}) == S_OK && fixture.actions.removals == 1,
         "Unchanged selection permits exactly one source removal");
 
     FrameCase replaced;
@@ -528,16 +528,16 @@ void TestFinalRemovalGuards()
     hover.view->selected = {2}; hover.view->focused = 2;
     unsigned epoch = 1;
     for (unsigned i = 0; i < 20; ++i) if (IsNativeTransferInput(WM_MOUSEMOVE, 0)) ++epoch;
-    Check(hover.frame->Remove(hover.tab.id, folder.get(), selected, [&] { return epoch == 1; }) == S_OK &&
+    Check(hover.frame->Remove(hover.tab.id, folder.get(), selected, [&] { return epoch == 1; }, [] {}) == S_OK &&
         hover.actions.removals == 1, "Hover must not strand a confirmed source tab");
 
     FrameCase pending;
     pending.view->selected = {2}; pending.view->focused = 2; pending.view->fail_focus = true;
-    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }) == E_PENDING &&
+    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }, [] {}) == E_PENDING &&
         !pending.actions.removals, "Source read readiness must continue before any native remove");
     pending.view->fail_focus = false;
     pending.actions.remove_result = E_PENDING;
-    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }) == E_UNEXPECTED &&
+    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }, [] {}) == E_UNEXPECTED &&
         pending.actions.removals == 1, "An invoked native remove must never be treated as a retryable readiness poll");
 
     HANDLE peer = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -547,13 +547,49 @@ void TestFinalRemovalGuards()
     source.view->selected = {2}; source.view->focused = 2;
     source.browser->shell->after_get = [&] { SetEvent(peer); };
     Check(source.frame->Remove(source.tab.id, folder.get(), selected,
-        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }) == E_ABORT && !source.actions.removals,
+        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }, [] {}) == E_ABORT && !source.actions.removals,
         "Destination input during source COM reads must prevent final native removal");
     source.browser->shell->after_get = {};
     ResetEvent(peer);
     Check(source.frame->Remove(source.tab.id, folder.get(), selected,
-        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }) == S_OK && source.actions.removals == 1,
+        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }, [] {}) == S_OK && source.actions.removals == 1,
         "An unchanged destination fence allows exactly one native source removal");
+}
+
+void TestFinalForegroundDelegation()
+{
+    const auto folder = Child(70);
+    const auto selected = Selection({2}, 2);
+    FrameCase source;
+    source.view->selected = {2}; source.view->focused = 2;
+    unsigned reads = 0, reads_at_delegation = 0, delegations = 0;
+    source.browser->shell->after_get = [&] {
+        Check(!delegations, "Public-view COM must finish before foreground delegation");
+        ++reads;
+    };
+    Check(source.frame->Remove(source.tab.id, folder.get(), selected, [] { return true; }, [&] {
+        ++delegations;
+        reads_at_delegation = reads;
+        Check(reads && !source.actions.removals, "Delegate only after source validation and before native removal");
+    }) == S_OK && source.actions.removals == 1 && delegations == 1 && reads == reads_at_delegation,
+        "Exactly one foreground delegation follows COM and directly precedes native removal");
+
+    FrameCase canceled;
+    canceled.view->selected = {2}; canceled.view->focused = 2;
+    bool peer_unchanged = true;
+    Check(canceled.frame->Remove(canceled.tab.id, folder.get(), selected, [&] { return peer_unchanged; },
+        [&] { peer_unchanged = false; }) == E_ABORT && !canceled.actions.removals,
+        "Cancellation at the handoff boundary still preserves the source tab");
+
+    FrameCase invalid;
+    invalid.view->selected = {3}; invalid.view->focused = 3;
+    unsigned invalid_delegations = 0;
+    Check(invalid.frame->Remove(invalid.tab.id, folder.get(), selected, [] { return true; },
+        [&] { ++invalid_delegations; }) == E_ABORT && !invalid_delegations && !invalid.actions.removals,
+        "A changed source selection must not delegate permission or remove a tab");
+    invalid.view->selected = {2}; invalid.view->focused = 2;
+    Check(invalid.frame->Remove(invalid.tab.id, folder.get(), selected, [] { return true; }, {}) == E_ABORT &&
+        !invalid.actions.removals, "A missing handoff callback must not silently skip foreground delegation");
 }
 
 void TestEncoding()
@@ -864,6 +900,7 @@ int main(int argc, char** argv)
         Check(SUCCEEDED(initialized), "Initialize test-only COM apartment");
         TestEncoding(); TestRestore(); TestReentrancyAndDeferredConfirmation(); TestStability(); TestFrameSelectionGuards();
         TestInitialFolderReadiness(); TestNativeViewFocus(); TestNativeInput(); TestFinalRemovalGuards();
+        TestFinalForegroundDelegation();
         if (argc == 2 && std::strcmp(argv[1], "--shell-view") == 0) TestOwnedShellViews();
         else if (argc == 2 && std::strcmp(argv[1], "--native-views") == 0) TestNativeViewsReadOnly();
         CoUninitialize();

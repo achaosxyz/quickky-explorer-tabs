@@ -20,6 +20,9 @@ struct HookClientTestAccess {
     Reply reply = Reply::Pending;
     unsigned requests = 0;
     std::uint32_t received_progress = 0;
+    std::uint32_t received_destination_pid = 0;
+    std::uint64_t received_destination_start = 0;
+    GUID received_destination_nonce{};
     bool valid_requests = true;
 
     ~HookClientTestAccess()
@@ -39,6 +42,12 @@ struct HookClientTestAccess {
         client.target_ = CreateWindowExW(0, definition.lpszClassName, L"", 0, 0, 0, 0, 0,
             HWND_MESSAGE, nullptr, definition.hInstance, this);
         client.identity_.target = reinterpret_cast<UINT_PTR>(client.target_);
+        FILETIME created{}, exited{}, kernel{}, user{};
+        if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) ||
+            FAILED(CoCreateGuid(&client.identity_.nonce))) return false;
+        client.window_ = {{reinterpret_cast<NativeWindow>(client.target_), GetCurrentProcessId(),
+            GetCurrentThreadId(), (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) |
+                created.dwLowDateTime}, 1};
         client.lease_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         client.input_changed_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         client.completed_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -50,6 +59,8 @@ struct HookClientTestAccess {
     }
 
     bool LeaseCanceled() const { return WaitForSingleObject(client.lease_, 0) == WAIT_OBJECT_0; }
+    GUID nonce() const { return client.identity_.nonce; }
+    void InvalidateIdentity() { client.window_.generation = 0; }
 
     void CompleteLate()
     {
@@ -72,10 +83,13 @@ private:
         if (data.dwData != kGuardProtocol || data.cbData != sizeof(GuardRequest) || !data.lpData) return 0;
         const auto& request = *static_cast<const GuardRequest*>(data.lpData);
         if (request.command == GuardCommand::Detach) return 1;
-        if (request.command != GuardCommand::NativeRestore) return 0;
+        if (request.command != GuardCommand::NativeRestore && request.command != GuardCommand::NativeRemove) return 0;
         auto& packet = *self->client.exchange_;
         ++self->requests;
         self->received_progress = packet.count;
+        self->received_destination_pid = packet.destination_pid;
+        self->received_destination_start = packet.destination_started_at;
+        self->received_destination_nonce = packet.destination_nonce;
         self->valid_requests = self->valid_requests && request.version == kGuardVersion &&
             request.target == reinterpret_cast<UINT_PTR>(window) && packet.state == 0 &&
             packet.version == kGuardVersion && packet.request == ++self->sequence_ &&
@@ -86,8 +100,8 @@ private:
             return 1;
         }
         packet.result = self->reply == Reply::Success ? S_OK : E_PENDING;
-        packet.count = kNativeRestoreFolderReady |
-            (self->reply == Reply::Pending ? 0 : kNativeRestoreWriteConsumed);
+        packet.count = request.command == GuardCommand::NativeRemove ? 0 :
+            kNativeRestoreFolderReady | (self->reply == Reply::Pending ? 0 : kNativeRestoreWriteConsumed);
         if (self->reply == Reply::WrongVersion) ++packet.version;
         if (self->reply == Reply::WrongRequest) ++packet.request;
         InterlockedExchange(&packet.state, self->reply == Reply::WrongState ? 1 : 2);
@@ -945,6 +959,28 @@ void TestNativeExchangeAcknowledgment()
     }
 }
 
+void TestNativeForegroundDestinationIdentity()
+{
+    using Fixture = quickky::HookClientTestAccess;
+    Fixture source, destination, invalid;
+    Check(source.Start() && destination.Start() && invalid.Start(), "Create owned foreground-handoff peers");
+    source.reply = Fixture::Reply::Success;
+    const ITEMIDLIST folder{};
+    const quickky::FolderSelection selection;
+    Check(!source.client.RemoveNative(GUID{1}, &folder, selection, 73, source.client) && source.requests == 0,
+        "Source cannot delegate foreground permission to itself as a destination attachment");
+    invalid.InvalidateIdentity();
+    Check(!source.client.RemoveNative(GUID{1}, &folder, selection, 73, invalid.client) && source.requests == 0,
+        "Invalid destination identity must not send a source-removal request");
+    Check(source.client.RemoveNative(GUID{1}, &folder, selection, 73, destination.client) &&
+        source.valid_requests && source.requests == 1 && !source.LeaseCanceled(),
+        "An acknowledged removal carries a valid destination foreground identity");
+    Check(source.received_destination_pid == destination.client.window().window.process_id &&
+        source.received_destination_start == destination.client.window().window.process_started_at &&
+        InlineIsEqualGUID(source.received_destination_nonce, destination.nonce()),
+        "Foreground PID and creation time must come from the same nonce-bound destination attachment");
+}
+
 HWND OwnedStrip(HWND owner)
 {
     struct Search { HWND owner; HWND result = nullptr; } search{owner};
@@ -1152,6 +1188,7 @@ int main(int argc, char* argv[])
         TestDetachDuringNativeClip(controller.get(), library.module());
         TestUnsupportedNativeFrame(controller.get(), library.module());
         TestNativeExchangeAcknowledgment();
+        TestNativeForegroundDestinationIdentity();
         Check(!IsWindowVisible(target.root()) && !IsWindowVisible(target.initial_tab()),
             "Keep all synthetic Explorer windows hidden");
         std::cout << "PASS: Synthetic workspace bridge, recovery, boundary, and locale tests.\n";
