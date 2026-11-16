@@ -59,6 +59,7 @@ public:
     bool Refresh(const std::map<NativeWindow, WindowCandidate>& visible);
     // Scheduling hint for the last pass, never a claim about an uncertain move.
     bool native_transfer_completed() const noexcept { return native_transferred_; }
+    bool native_transfer_pending() const noexcept { return native_pending_ != nullptr; }
     bool QueueInput(WPARAM sender, LPARAM packet);
     bool ProcessInput();
     void Stop();
@@ -66,13 +67,24 @@ public:
 private:
     friend struct WorkspaceControllerTestAccess;
     struct Entry {
-        std::unique_ptr<HookClient> client;
+        std::shared_ptr<HookClient> client;
         std::wstring label;
         WorkspacePublicationState publication;
     };
     struct Input { WindowIdentity source; TabInput action; TabId tab; OwnedPidl folder; };
+    // One acknowledged add, continued without rebasing its identities or input
+    // tokens. Restore progress survives polls; the created GUID is never added twice.
+    struct NativeTransfer {
+        WindowIdentity source, destination;
+        GUID source_tab{}, created{};
+        OwnedPidl folder;
+        FolderSelection selection;
+        std::uint64_t source_input = 0, destination_input = 0;
+        std::uint32_t restore_progress = 0;
+    };
     bool Publish();
     bool RefreshNative(const std::map<NativeWindow, WindowCandidate>& visible);
+    void ContinueNativeTransfer(const FolderLocations& locations);
     std::vector<HWND> FolderRoots(const std::map<NativeWindow, WindowCandidate>& visible) const;
     std::map<NativeWindow, WindowIdentity> SnapshotAttachments() const;
     void ReconcileEntries(const FolderLocations& locations,
@@ -96,6 +108,7 @@ private:
     bool placed_ = false;
     bool native_ = false;
     bool native_transferred_ = false;
+    std::shared_ptr<NativeTransfer> native_pending_;
     NativeWindow main_ = 0;
     std::map<NativeWindow, WindowCandidate> quarantined_;
 };

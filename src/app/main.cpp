@@ -280,7 +280,7 @@ int Run(HINSTANCE instance, const Options& options)
                 if ((message.wParam == kRefreshTimer || fast) && workspace) {
                     if (!workspace->Refresh(discovery.windows())) disable();
                     else ArmWorkspaceRefresh(window, state, state.refresh.AfterRefresh(
-                        GetTickCount64(), workspace->native_transfer_completed()));
+                        GetTickCount64(), workspace->native_transfer_completed() || workspace->native_transfer_pending()));
                 }
                 if (message.wParam == kExitTimer) { DestroyWindow(window); }
             } else if (message.hwnd == window && message.message == quickky::kTrayMenuMessage && resident) {

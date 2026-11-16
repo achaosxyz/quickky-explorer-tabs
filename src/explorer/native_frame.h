@@ -22,7 +22,8 @@ public:
     HRESULT CaptureSelection(std::vector<GUID>& tabs, GUID& active,
         FolderLocation& folder, FolderSelection& selection);
     HRESULT RestoreSelection(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-        const FolderSelection& selection, bool& applied, const std::function<bool()>& unchanged);
+        const FolderSelection& selection, bool& applied, bool& folder_ready,
+        const std::function<bool()>& unchanged);
     HRESULT Add(PCIDLIST_ABSOLUTE folder, GUID& created);
     HRESULT Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
         const FolderSelection& expected_selection, const std::function<bool()>& unchanged);

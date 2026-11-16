@@ -159,16 +159,25 @@ HRESULT NativeFrame::CaptureSelection(std::vector<GUID>& tabs, GUID& active,
 }
 
 HRESULT NativeFrame::RestoreSelection(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-    const FolderSelection& selection, bool& applied, const std::function<bool()>& unchanged)
+    const FolderSelection& selection, bool& applied, bool& folder_ready,
+    const std::function<bool()>& unchanged)
 {
     Microsoft::WRL::ComPtr<IFolderView> view;
+    bool waiting_for_folder = false;
     const auto matches = [&] {
         if (!Valid() || !available_ || !available_() || !unchanged || !unchanged()) return false;
         std::vector<GUID> tabs;
         GUID active{};
         FolderLocation current;
         if (!Snapshot(tabs, active, current) || !InlineIsEqualGUID(active, tab) ||
-            !ILIsEqual(current.pidl.get(), folder)) return false;
+            !ILIsEqual(current.pidl.get(), folder)) {
+            // Only initial navigation may wait, never a changed tab/input or
+            // a folder change after the expected folder was already observed.
+            waiting_for_folder = !folder_ready && !applied && Valid() && available_ && available_() &&
+                unchanged && unchanged() && ReadTabs(tabs, active) && InlineIsEqualGUID(active, tab);
+            return false;
+        }
+        folder_ready = true;
         if (view) {
             Microsoft::WRL::ComPtr<IFolderView> actual;
             if (FAILED(ActiveView(&actual)) || !SameView(view.Get(), actual.Get())) return false;
@@ -176,7 +185,7 @@ HRESULT NativeFrame::RestoreSelection(const GUID& tab, PCIDLIST_ABSOLUTE folder,
         return ReadTabs(tabs, active) && InlineIsEqualGUID(active, tab) &&
             available_ && available_() && unchanged();
     };
-    if (!matches()) return E_ABORT;
+    if (!matches()) return waiting_for_folder ? E_PENDING : E_ABORT;
     const auto resolved = ActiveView(&view);
     if (FAILED(resolved)) return resolved;
     return quickky::RestoreSelection(view.Get(), folder, selection, applied, matches);
@@ -224,8 +233,9 @@ HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
     GUID selected{};
     FolderLocation location;
     FolderSelection current;
-    if (CaptureSelection(captured, selected, location, current) != S_OK ||
-        !InlineIsEqualGUID(tab, selected) || !expected_folder ||
+    const auto result_capture = CaptureSelection(captured, selected, location, current);
+    if (result_capture != S_OK) return result_capture;
+    if (!InlineIsEqualGUID(tab, selected) || !expected_folder ||
         !ILIsEqual(location.pidl.get(), expected_folder) ||
         !SameSelection(expected_selection, current) || !unchanged()) return E_ABORT;
     // Capture already confirmed the folder/view through COM. Final active-tab
@@ -237,6 +247,8 @@ HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
         !available_ || !available_() || !unchanged()) return E_ABORT;
     using Function = HRESULT (STDMETHODCALLTYPE*)(void*, GUID);
     const auto result = reinterpret_cast<Function>(original_[4])(actions_, tab);
+    // A pending response is retryable only before invoking native removal.
+    if (result == E_PENDING) return E_UNEXPECTED;
     if (FAILED(result) || !IsWindow(root_)) return result;
     if (!ReadTabs(tabs, active) || std::any_of(tabs.begin(), tabs.end(),
         [&tab](const GUID& id) { return InlineIsEqualGUID(id, tab); })) return E_ABORT;

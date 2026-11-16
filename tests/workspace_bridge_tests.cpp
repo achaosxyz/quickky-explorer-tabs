@@ -10,6 +10,94 @@
 #include <dwmapi.h>
 #include <knownfolders.h>
 
+namespace quickky {
+
+// Owns only a message-only peer and anonymous transport objects. Production
+// serialization/waiting/cancellation run unchanged, without hooking Explorer.
+struct HookClientTestAccess {
+    enum class Reply { Pending, PendingConsumed, Success, Timeout, WrongVersion, WrongRequest, WrongState };
+    HookClient client;
+    Reply reply = Reply::Pending;
+    unsigned requests = 0;
+    std::uint32_t received_progress = 0;
+    bool valid_requests = true;
+
+    ~HookClientTestAccess()
+    {
+        const auto window = client.target_;
+        client.Detach();
+        if (window) DestroyWindow(window);
+    }
+
+    bool Start()
+    {
+        WNDCLASSW definition{};
+        definition.hInstance = GetModuleHandleW(nullptr);
+        definition.lpfnWndProc = Procedure;
+        definition.lpszClassName = L"QTabs.NativeExchangeFixture";
+        if (!RegisterClassW(&definition) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
+        client.target_ = CreateWindowExW(0, definition.lpszClassName, L"", 0, 0, 0, 0, 0,
+            HWND_MESSAGE, nullptr, definition.hInstance, this);
+        client.identity_.target = reinterpret_cast<UINT_PTR>(client.target_);
+        client.lease_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        client.input_changed_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        client.completed_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        client.mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+            0, sizeof(NativeExchange), nullptr);
+        if (client.mapping_) client.exchange_ = static_cast<NativeExchange*>(
+            MapViewOfFile(client.mapping_, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(NativeExchange)));
+        return client.target_ && client.lease_ && client.input_changed_ && client.completed_ && client.exchange_;
+    }
+
+    bool LeaseCanceled() const { return WaitForSingleObject(client.lease_, 0) == WAIT_OBJECT_0; }
+
+    void CompleteLate()
+    {
+        client.exchange_->result = S_OK;
+        InterlockedExchange(&client.exchange_->state, 2);
+        SetEvent(client.completed_);
+    }
+
+private:
+    std::uint64_t sequence_ = 0;
+    static LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+    {
+        auto* self = reinterpret_cast<HookClientTestAccess*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (message == WM_NCCREATE) {
+            self = static_cast<HookClientTestAccess*>(reinterpret_cast<CREATESTRUCTW*>(lparam)->lpCreateParams);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+        }
+        if (message != WM_COPYDATA || !self) return DefWindowProcW(window, message, wparam, lparam);
+        const auto& data = *reinterpret_cast<COPYDATASTRUCT*>(lparam);
+        if (data.dwData != kGuardProtocol || data.cbData != sizeof(GuardRequest) || !data.lpData) return 0;
+        const auto& request = *static_cast<const GuardRequest*>(data.lpData);
+        if (request.command == GuardCommand::Detach) return 1;
+        if (request.command != GuardCommand::NativeRestore) return 0;
+        auto& packet = *self->client.exchange_;
+        ++self->requests;
+        self->received_progress = packet.count;
+        self->valid_requests = self->valid_requests && request.version == kGuardVersion &&
+            request.target == reinterpret_cast<UINT_PTR>(window) && packet.state == 0 &&
+            packet.version == kGuardVersion && packet.request == ++self->sequence_ &&
+            request.input_tab == packet.request && packet.input_epoch == 73 &&
+            InlineIsEqualGUID(packet.active, GUID{1});
+        if (self->reply == Reply::Timeout) {
+            InterlockedExchange(&packet.state, 1); // Accepted, but never acknowledged.
+            return 1;
+        }
+        packet.result = self->reply == Reply::Success ? S_OK : E_PENDING;
+        packet.count = kNativeRestoreFolderReady |
+            (self->reply == Reply::Pending ? 0 : kNativeRestoreWriteConsumed);
+        if (self->reply == Reply::WrongVersion) ++packet.version;
+        if (self->reply == Reply::WrongRequest) ++packet.request;
+        InterlockedExchange(&packet.state, self->reply == Reply::WrongState ? 1 : 2);
+        SetEvent(self->client.completed_);
+        return 1;
+    }
+};
+
+} // namespace quickky
+
 namespace {
 
 constexpr wchar_t kRootClass[] = L"CabinetWClass";
@@ -810,6 +898,53 @@ void TestUnsupportedNativeFrame(HWND sender, HMODULE module)
         "An uncommitted native attachment cannot reveal or mutate its root");
 }
 
+void TestNativeExchangeAcknowledgment()
+{
+    using Fixture = quickky::HookClientTestAccess;
+    const ITEMIDLIST folder{}; // An empty absolute PIDL suffices for serialization.
+    const quickky::FolderSelection selection;
+    {
+        Fixture peer;
+        Check(peer.Start(), "Create owned native reply transport");
+        std::uint32_t progress = 0;
+        Check(!peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            peer.client.native_waiting() && peer.client.last_native_result() == E_PENDING &&
+            progress == quickky::kNativeRestoreFolderReady && !peer.LeaseCanceled() &&
+            peer.client.native_input_unchanged(), "Acknowledged loading retains progress and a live lease");
+        peer.reply = Fixture::Reply::PendingConsumed;
+        Check(!peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            peer.client.native_waiting() &&
+            progress == (quickky::kNativeRestoreFolderReady | quickky::kNativeRestoreWriteConsumed) &&
+            peer.received_progress == quickky::kNativeRestoreFolderReady && peer.requests == 2 &&
+            !peer.LeaseCanceled(), "Acknowledged pending confirmation retains the consumed selection write");
+        peer.reply = Fixture::Reply::Success;
+        Check(peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            !peer.client.native_waiting() && peer.client.last_native_result() == S_OK &&
+            progress == (quickky::kNativeRestoreFolderReady | quickky::kNativeRestoreWriteConsumed) &&
+            peer.received_progress == (quickky::kNativeRestoreFolderReady | quickky::kNativeRestoreWriteConsumed) &&
+            peer.requests == 3 &&
+            peer.valid_requests && !peer.LeaseCanceled(), "The next request echoes progress and confirms restoration");
+    }
+    for (const auto failure : {Fixture::Reply::Timeout, Fixture::Reply::WrongVersion,
+        Fixture::Reply::WrongRequest, Fixture::Reply::WrongState}) {
+        Fixture peer;
+        Check(peer.Start(), "Create independent failed-reply transport");
+        std::uint32_t progress = 0;
+        Check(!peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            peer.client.native_waiting(), "Establish acknowledged loading before a failed exchange");
+        peer.reply = failure;
+        Check(!peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            !peer.client.native_waiting() && peer.client.last_native_result() == E_PENDING &&
+            progress == quickky::kNativeRestoreFolderReady && peer.LeaseCanceled() &&
+            !peer.client.native_input_unchanged() && peer.requests == 2 && peer.valid_requests,
+            "Unconfirmed replies cancel both fences without importing progress or reusing old acknowledgment");
+        peer.CompleteLate();
+        Check(!peer.client.RestoreNative(GUID{1}, &folder, selection, 73, progress) &&
+            !peer.client.native_waiting() && peer.requests == 2,
+            "A late completion cannot revive or reuse the canceled exchange");
+    }
+}
+
 HWND OwnedStrip(HWND owner)
 {
     struct Search { HWND owner; HWND result = nullptr; } search{owner};
@@ -1016,6 +1151,7 @@ int main(int argc, char* argv[])
         TestNativeHostLoss(controller.get(), library.module());
         TestDetachDuringNativeClip(controller.get(), library.module());
         TestUnsupportedNativeFrame(controller.get(), library.module());
+        TestNativeExchangeAcknowledgment();
         Check(!IsWindowVisible(target.root()) && !IsWindowVisible(target.initial_tab()),
             "Keep all synthetic Explorer windows hidden");
         std::cout << "PASS: Synthetic workspace bridge, recovery, boundary, and locale tests.\n";

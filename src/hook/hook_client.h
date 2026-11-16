@@ -53,18 +53,23 @@ public:
     bool CaptureNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& folder,
         FolderSelection& selection, std::uint64_t& input_epoch);
     bool RestoreNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-        const FolderSelection& selection, std::uint64_t input_epoch);
+        const FolderSelection& selection, std::uint64_t input_epoch, std::uint32_t& progress);
     bool AddNative(PCIDLIST_ABSOLUTE folder, GUID& created, std::uint64_t& input_epoch);
     bool RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-        const FolderSelection& selection, std::uint64_t input_epoch);
+        const FolderSelection& selection, std::uint64_t input_epoch, const HookClient& destination);
     bool RevealNative(const GUID& tab);
-    // Last acknowledged native result; E_PENDING means no confirmed response.
+    // Only an acknowledged readiness poll can continue. Transport timeout is
+    // never permission to repeat an already-started native mutation.
     HRESULT last_native_result() const noexcept { return native_result_; }
+    bool native_waiting() const noexcept { return native_acknowledged_ && native_result_ == E_PENDING; }
+    bool native_input_unchanged() const noexcept
+    { return input_changed_ && WaitForSingleObject(input_changed_, 0) == WAIT_TIMEOUT; }
     bool AcceptInput(HWND sender, const GuardRequest& request) const;
     void Cancel() noexcept;
     bool Detach();
     const WindowIdentity& window() const noexcept { return window_; }
 private:
+    friend struct HookClientTestAccess;
     DWORD_PTR Send(GuardRequest& request) const;
     bool Exchange(GuardCommand command, NativeExchange& packet);
     HWND sender_ = nullptr;
@@ -72,9 +77,11 @@ private:
     HANDLE lease_ = nullptr;
     HANDLE mapping_ = nullptr;
     HANDLE completed_ = nullptr;
+    HANDLE input_changed_ = nullptr;
     NativeExchange* exchange_ = nullptr;
     std::uint64_t sequence_ = 0;
     HRESULT native_result_ = E_PENDING;
+    bool native_acknowledged_ = false;
     GuardRequest identity_;
     WindowIdentity window_;
 };

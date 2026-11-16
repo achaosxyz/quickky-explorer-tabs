@@ -101,11 +101,17 @@ malformed, duplicate or excessive child PIDLs (256 items, 64 KiB total).
 The posted `NativeCapture` operation waits for stable source observations, giving
 an initially empty selection time for file-location launches to finish. This is
 bounded readiness, not a guarantee about a future external selection request.
-`NativeRestore` waits for the created view's folder and child readiness through
+`NativeRestore` waits for the created tab's initial folder snapshot and the
+created view's folder and child readiness through
 `IFolderView2::GetSelectionState`, applies selection/focus once
-with ensure-visible semantics and confirms it before source removal. Timer retries
-never repeat the native add or override a changed active tab/input. Source removal
-requires the captured selection to still match; failure preserves the original.
+with ensure-visible semantics and confirms it before source removal. Controller
+readiness polls never repeat the native add or override a changed active tab/input.
+Source removal requires the captured selection to still match; failure preserves
+the original.
+Initial missing/mismatched folder snapshots return `E_PENDING` only while the
+created GUID and input token remain current. A latched folder-ready flag survives
+controller polls: a later folder change aborts, even before a selection write.
+This readiness wait cannot be bypassed by an eager controller folder check.
 Canonical COM view identity is rechecked after callouts; matching a folder alone
 does not authorize writing to a replaced view. Input generation and a final
 non-pumping active-GUID check guard source deletion after selection capture.

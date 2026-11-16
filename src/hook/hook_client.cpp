@@ -67,6 +67,7 @@ HookClient::~HookClient()
     if (exchange_) UnmapViewOfFile(exchange_);
     if (mapping_) CloseHandle(mapping_);
     if (completed_) CloseHandle(completed_);
+    if (input_changed_) CloseHandle(input_changed_);
     if (lease_) CloseHandle(lease_);
 }
 
@@ -105,6 +106,8 @@ bool HookClient::Prepare(HWND sender, HMODULE module, const WindowIdentity& wind
     lease_ = CreateEventW(nullptr, TRUE, FALSE, event_name.c_str());
     if (!lease_ || GetLastError() == ERROR_ALREADY_EXISTS) return false;
     if (native) {
+        input_changed_ = CreateEventW(nullptr, TRUE, FALSE, NativeInputEventName(identity_.nonce).c_str());
+        if (!input_changed_ || GetLastError() == ERROR_ALREADY_EXISTS) return false;
         completed_ = CreateEventW(nullptr, TRUE, FALSE, (NativeMappingName(identity_.nonce) + L".Ready").c_str());
         if (!completed_ || GetLastError() == ERROR_ALREADY_EXISTS) return false;
         mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
@@ -176,6 +179,7 @@ bool HookClient::Healthy()
 bool HookClient::Exchange(GuardCommand command, NativeExchange& packet)
 {
     native_result_ = E_PENDING;
+    native_acknowledged_ = false;
     if (!exchange_ || !lease_ || WaitForSingleObject(lease_, 0) != WAIT_TIMEOUT) return false;
     packet.version = kGuardVersion;
     packet.request = ++sequence_;
@@ -207,6 +211,7 @@ bool HookClient::Exchange(GuardCommand command, NativeExchange& packet)
     }
     std::memcpy(&packet, exchange_, sizeof(packet));
     native_result_ = packet.result;
+    native_acknowledged_ = true;
     return SUCCEEDED(packet.result);
 }
 
@@ -238,16 +243,19 @@ bool HookClient::CaptureNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl&
 }
 
 bool HookClient::RestoreNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-    const FolderSelection& selection, std::uint64_t input_epoch)
+    const FolderSelection& selection, std::uint64_t input_epoch, std::uint32_t& progress)
 {
     NativeExchange packet;
+    packet.count = progress;
     packet.active = tab;
     packet.input_epoch = input_epoch;
     packet.folder_bytes = folder ? ILGetSize(folder) : 0;
     if (!packet.folder_bytes || packet.folder_bytes > sizeof(packet.folder) ||
         !EncodeSelection(selection, packet.selection, sizeof(packet.selection), packet.selection_bytes)) return false;
     std::memcpy(packet.folder, folder, packet.folder_bytes);
-    return Exchange(GuardCommand::NativeRestore, packet);
+    const auto restored = Exchange(GuardCommand::NativeRestore, packet);
+    if (native_acknowledged_ && IsNativeRestoreProgress(packet.count)) progress = packet.count;
+    return restored;
 }
 
 bool HookClient::AddNative(PCIDLIST_ABSOLUTE folder, GUID& created, std::uint64_t& input_epoch)
@@ -263,9 +271,11 @@ bool HookClient::AddNative(PCIDLIST_ABSOLUTE folder, GUID& created, std::uint64_
 }
 
 bool HookClient::RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
-    const FolderSelection& selection, std::uint64_t input_epoch)
+    const FolderSelection& selection, std::uint64_t input_epoch, const HookClient& destination)
 {
     NativeExchange packet;
+    if (!destination.input_changed_ || &destination == this) return false;
+    packet.destination_nonce = destination.identity_.nonce;
     packet.active = tab;
     packet.input_epoch = input_epoch;
     packet.folder_bytes = folder ? ILGetSize(folder) : 0;
@@ -293,6 +303,7 @@ bool HookClient::AcceptInput(HWND sender, const GuardRequest& request) const
 void HookClient::Cancel() noexcept
 {
     if (lease_) SetEvent(lease_);
+    if (input_changed_) SetEvent(input_changed_);
 }
 
 bool HookClient::Detach()

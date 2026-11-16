@@ -56,16 +56,31 @@ therefore means unconfirmed completion, not rollback or a preserved source; the
 controller quarantines the source identity instead of retrying the mutation. Native
 commit binds a matched `NativeFrame` and current-folder input only, without a
 guard, region clipping, Quickky strip, or window visibility changes.
-Protocol version 8 carries bounded file-selection snapshots and executes
-`NativeCapture`/`NativeRestore` on the same posted-command path. Readiness polls
-use a 25-ms UI timer with an 800-ms limit, below the exchange's two-second deadline;
+Protocol version 9 carries bounded file-selection snapshots and executes
+`NativeCapture`/`NativeRestore` on the same posted-command path. Capture readiness
+uses a 25-ms UI timer with an 800-ms limit, below the exchange's two-second deadline;
 there are no sleeps. Source capture requires 50 ms unchanged observations and a
-200-ms grace for empty selection. Restore waits for folder/child readiness, writes
-once, then only confirms. The existing message hook records target keyboard/mouse
+200-ms grace for empty selection. Restore performs one readiness poll per command
+and acknowledges `E_PENDING` for later controller reconciliation. Its progress
+flags survive those commands, so it writes once and then only confirms. The
+existing message hook records target keyboard/mouse
 input; capture/add return generation tokens that restore/final removal must echo,
-rejecting input across the whole operation including IPC gaps. Reentrant
-native posts cannot execute an occupied request twice. Add/remove are never timer
-retried. Detach cancels the timer; the callback/mapping keepalive survives teardown.
+rejecting actionable input across the whole operation including IPC gaps.
+`native_input.h` defines that filter: keys, mouse buttons, wheels and button-held
+client motion advance the generation. Unpressed hover motion does not: Explorer
+can synthesize it during layout/activation without any selection or navigation
+command. Independent selection, folder and view checks still protect both ends.
+The destination's nonce-named input-change event stays armed from add to final
+source removal. Source-side validation checks that peer event without pumping
+after its COM reads, so target input/cancellation during those reads cannot pass
+the last pre-mutation guard. The event does not cancel an ordinary attachment.
+Destination restore retains an initial-folder-ready flag across controller polls;
+only the initial missing/mismatched folder may wait. A folder change after it
+was observed, an active-tab change or a canceled input token aborts. Reentrant
+native posts cannot execute an occupied request twice. Add and an already-invoked
+native remove are never retried; acknowledged pre-removal readiness can continue
+on a later controller pass. Detach cancels the capture timer; the callback/mapping
+keepalive survives teardown.
 `NativeReveal` uses the same authenticated posted-command
 path. Only a confirmed transfer requests this optional presentation operation;
 failure never retries native add/remove. It reselects the created GUID and restores
@@ -95,6 +110,12 @@ the pre-existing Explorer window and its native tabs are excluded. No global
 hook, registry/feature-flag edit, binary patch, or private symbol detour is used.
 
 ## Acceptance evidence
+
+The synthetic workspace bridge also exercises the real client exchange against
+an owned message-only reply fixture, without bootstrap or native calls. It checks
+acknowledged pending/successful restore progress, timeout, invalid reply version,
+request correlation and completion state, plus canceled-lease reuse rejection.
+This transport check does not establish Explorer transfer compatibility.
 
 ### Scoped workspace bridge
 

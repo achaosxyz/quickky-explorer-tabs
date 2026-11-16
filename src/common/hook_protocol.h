@@ -9,7 +9,14 @@
 namespace quickky {
 
 constexpr ULONG_PTR kGuardProtocol = 0x514b4750;
-constexpr std::uint32_t kGuardVersion = 8;
+constexpr std::uint32_t kGuardVersion = 9;
+constexpr std::uint32_t kNativeRestoreFolderReady = 1;
+constexpr std::uint32_t kNativeRestoreWriteConsumed = 2;
+inline bool IsNativeRestoreProgress(std::uint32_t value)
+{
+    return value == 0 || value == kNativeRestoreFolderReady ||
+        value == (kNativeRestoreFolderReady | kNativeRestoreWriteConsumed);
+}
 constexpr unsigned kMaxWorkspaceTabs = 32;
 constexpr unsigned kMaxNativeTabs = 128;
 enum class GuardCommand : std::uint32_t {
@@ -60,6 +67,10 @@ inline std::wstring NativeMappingName(const GUID& nonce)
 {
     return LeaseEventName(nonce) + L".Native";
 }
+inline std::wstring NativeInputEventName(const GUID& nonce)
+{
+    return NativeMappingName(nonce) + L".Input";
+}
 
 // Single outstanding request per lease. Interlocked state publishes the reply;
 // a timeout retires the lease/mapping instead of racing a late target callback.
@@ -69,9 +80,10 @@ struct NativeExchange {
     std::uint64_t request = 0;
     std::uint64_t input_epoch = 0; // Lease-bound source-capture / destination-add token.
     HRESULT result = E_PENDING;
-    std::uint32_t count = 0;
+    std::uint32_t count = 0; // Snapshot tab count, or NativeRestore progress flags.
     GUID active{};
     GUID created{};
+    GUID destination_nonce{}; // NativeRemove's live destination-input fence.
     GUID tabs[kMaxNativeTabs]{};
     std::uint32_t folder_bytes = 0;
     unsigned char folder[65536]{};

@@ -31,7 +31,10 @@ or complete native-tab replacement.
    or symbol downloads. Versioned maps are offline test oracles only. Confirm
    destination GUID/PIDL and bounded file-selection/focus restoration before
    deleting the revalidated source GUID, never a whole source frame. Input tokens
-   span capture/add through removal/restoration; changed state preserves the source. Reveal a
+   span capture/add through removal/restoration; ordinary hover is not cancellation.
+   Acknowledged loading resumes the same created GUID with preserved restore
+   progress on later passes, never another add. A peer input-change event protects
+   the final source-removal decision; changed state preserves the source. Reveal a
    minimized main frame only after confirmed native transfer. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.

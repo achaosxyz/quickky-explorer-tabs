@@ -21,6 +21,21 @@ maximized placement restored. This is separate from raw native drop behavior and
 does not verify every launch route or all view state. Navigation history is not
 preserved.
 
+Transfer cancellation tracks actionable input: keys, mouse buttons, wheels and
+button-held motion. Ordinary hover motion is not a cancellation event; native
+selection, folder, GUID and view-identity checks remain mandatory. Destination
+restoration polls for its initial folder within per-command deadlines. Once that
+folder has been observed, a changed folder aborts the move.
+The controller confirms the restored destination before removing the source GUID;
+neither waiting nor a failed move permits another native add or a whole-frame close.
+Protocol 9 acknowledges each restore-readiness poll. A pending transfer retains
+the created GUID, attachment identities, original selection/input tokens and
+restore progress across controller passes. Known loading work schedules another
+100-ms pass and does not enter permanent quarantine. Incomplete public folder
+coverage pauses its mutations without canceling the existing leases; identity
+loss, rejected scope, actual changed state and unacknowledged native side effects
+remain fail-closed. Stop discards continuation state after canceling its leases.
+
 This is an early preview, not complete native-tab replacement or general
 Windows 10/11 compatibility. Windows 11 uses five built-in accessor families and
 complete-entry code variants described in [native ABI adaptation](NATIVE_ABI.md).
@@ -365,10 +380,11 @@ adds these concrete contracts:
 - **Workspace refresh schedule:** application-thread-only pending work and a
   one-second readiness deadline. New candidates and unadmitted root-window
   readiness hints coalesce into a 25 ms timer;
-  readiness retries and confirmed native-transfer continuations use 100 ms.
+  readiness retries and acknowledged pending/confirmed native-transfer
+  continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window. A version-8 bounded
+  Quickky changes without closing the user's Explorer window. A version-9 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
   a per-window lifetime property and cancellation event protect local recovery.
   New input appends a bounded, validated PIDL snapshot; no native pointers cross
@@ -387,13 +403,14 @@ adds these concrete contracts:
   are offline regression oracles only. Neither data type travels over IPC.
 - **Native file selection:** at most 256 selected child PIDLs and an optional
   focused child, encoded within 64 KiB independently of the folder PIDL. Protocol
-  version 8 carries these bytes, never COM pointers. `NativeCapture` settles source
+  version 9 carries these bytes, never COM pointers. `NativeCapture` settles source
   reads (50 ms unchanged, 200 ms grace for empty selections) and `NativeRestore`
-  waits for the exact destination view. Both use posted/timer UI work bounded to
-  800 ms, below the 2-second exchange deadline, without sleeps or repeated adds.
-  Restore is applied once, then only checked. Lease-bound input-generation tokens
-  span source capture-to-remove and destination add-to-restore, including IPC gaps;
-  intervening input cancels the guarded operation instead of overwriting the user.
+  polls the exact destination view. Capture uses posted/timer UI work bounded to
+  800 ms, below the 2-second exchange deadline. Restore returns acknowledged
+  readiness to the controller and carries folder-ready/write-consumed flags
+  across its 100-ms passes, without sleeps or repeated adds. Lease-bound input
+  generations and nonce-named change events span capture/add to final removal.
+  Actionable input cancels rather than overwrites the user; unpressed hover does not.
 
 Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their
@@ -467,8 +484,8 @@ The implemented executable flow is:
    enabled, newly discovered candidates and create/show/foreground hints for
    unadmitted root `CabinetWClass` windows queue a coalesced 25 ms workspace pass,
    outside WinEvent/IPC callbacks. Retry readiness at 100 ms intervals for up to
-   one second after the latest candidate. A confirmed native transfer queues a
-   100 ms continuation even after that deadline, still one mutation per pass;
+   one second after the latest candidate. A confirmed or pending native transfer queues a
+   100 ms continuation even after that deadline, still one source-tab transfer per pass;
    failure or an uncertain outcome does not count as progress. Fast passes
    re-probe discovery before workspace reconciliation, retaining every normal
    identity/scope check. A readiness hint is not an admission or attachment.

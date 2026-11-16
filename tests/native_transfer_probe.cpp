@@ -71,16 +71,27 @@ int wmain(int argc, wchar_t** argv)
     ok = main.AddNative(folder.get(), created, destination_input);
     std::cout << "destination.add=" << ok << std::endl;
     if (!ok) return 1;
+    // Poll the same GUID, retaining progress rather than repeating native add.
+    std::uint32_t progress = 0;
+    const auto deadline = GetTickCount64() + 20000;
+    unsigned polls = 0;
+    do {
+        ++polls;
+        ok = main.RestoreNative(created, folder.get(), selection, destination_input, progress);
+        if (ok || !main.native_waiting()) break;
+        Sleep(100); // Manual diagnostic only; production uses controller timers.
+    } while (GetTickCount64() < deadline);
+    std::cout << "destination.selection=" << ok << " polls=" << polls << " native=0x" << std::hex <<
+        static_cast<unsigned long>(main.last_native_result()) << std::dec << std::endl;
+    if (!ok) return 1;
     GUID selected{};
     quickky::OwnedPidl received;
     ok = main.ReadNative(tabs, selected, received) && InlineIsEqualGUID(created, selected) &&
         ILIsEqual(folder.get(), received.get());
     std::cout << "destination.confirm=" << ok << std::endl;
     if (!ok) return 1;
-    ok = main.RestoreNative(created, folder.get(), selection, destination_input);
-    std::cout << "destination.selection=" << ok << std::endl;
-    if (!ok) return 1;
-    ok = incoming.RemoveNative(active, folder.get(), selection, source_input);
-    std::cout << "source.remove=" << ok << std::endl;
+    ok = incoming.RemoveNative(active, folder.get(), selection, source_input, main);
+    std::cout << "source.remove=" << ok << " native=0x" << std::hex <<
+        static_cast<unsigned long>(incoming.last_native_result()) << std::dec << std::endl;
     return ok ? 0 : 1;
 }

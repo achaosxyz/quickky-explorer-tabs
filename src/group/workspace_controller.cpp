@@ -68,10 +68,19 @@ void WorkspaceController::ReconcileEntries(const FolderLocations& locations,
         // Inspect may pump too. Never apply this batch to a replacement attachment.
         const auto entry = entries_.find(attachment.first);
         if (entry == entries_.end() || entry->second.client->window() != attachment.second) continue;
-        const bool valid = candidate && *candidate == attachment.second.window && entry->second.client->Healthy() &&
+        const bool identity_valid = candidate && *candidate == attachment.second.window && entry->second.client->Healthy();
+        const bool valid = identity_valid &&
             (native_ ? InNativeScope(target, locations) :
              (folders->second.size() == 1 && (root_.empty() ||
               IsWithinDirectory(folders->second.front().parsing_name, root_))));
+        // A newly added native tab may not yet have a public Shell view. Keep
+        // the original leases for known pending work; mutations remain paused
+        // until full scope is visible again. Never defer a proven outside path.
+        const bool pending_root = native_ && native_pending_ &&
+            (native_pending_->source == attachment.second || native_pending_->destination == attachment.second);
+        const bool outside = !root_.empty() && std::any_of(folders->second.begin(), folders->second.end(),
+            [this](const FolderLocation& folder) { return !IsWithinDirectory(folder.parsing_name, root_); });
+        if (!valid && pending_root && !outside && identity_valid) continue;
         const auto retained = entries_.find(attachment.first);
         if (retained == entries_.end() || retained->second.client->window() != attachment.second) continue;
         if (!valid) {
@@ -127,6 +136,7 @@ void WorkspaceController::Stop()
 {
     native_transferred_ = false;
     for (auto& entry : entries_) entry.second.client->Cancel();
+    native_pending_.reset();
     while (!entries_.empty()) Release(entries_.begin()->first);
     inputs_.clear();
     placed_ = false;
@@ -158,7 +168,7 @@ bool WorkspaceController::Refresh(const std::map<NativeWindow, WindowCandidate>&
         const auto identity = capture_.Observe(*current);
         const auto request = identity ? capture_.BeginAttach(*identity) : std::nullopt;
         if (!request) continue;
-        auto client = std::make_unique<HookClient>();
+        auto client = std::make_shared<HookClient>();
         bool attached = client->Prepare(sender_, library_.module(), *identity);
         if (attached) {
             const auto verified = probe_.Inspect(target);
@@ -213,7 +223,7 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         const auto identity = capture_.Observe(*candidate);
         const auto request = identity ? capture_.BeginAttach(*identity) : std::nullopt;
         if (!request) continue;
-        auto client = std::make_unique<HookClient>();
+        auto client = std::make_shared<HookClient>();
         bool attached = client->Prepare(sender_, library_.module(), *identity, WorkspaceMode::Native);
         if (attached) {
             const auto verified = probe_.Inspect(target);
@@ -222,16 +232,27 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         if (!capture_.CompleteAttach(*request, attached, true)) continue;
         entries_.emplace(item.first, Entry{std::move(client), L""});
     }
+    if (native_pending_) {
+        ContinueNativeTransfer(locations);
+        return true;
+    }
     if (!entries_.count(main_)) {
         const auto foreground = reinterpret_cast<NativeWindow>(GetForegroundWindow());
         main_ = entries_.count(foreground) ? foreground : entries_.empty() ? 0 : entries_.begin()->first;
     }
     if (!main_) return true;
-    auto& destination = *entries_.at(main_).client;
-    for (const auto& item : entries_) {
+    const auto participants = entries_; // Pin clients while COM can pump Stop/recovery.
+    const auto destination_client = participants.at(main_).client;
+    auto& destination = *destination_client;
+    for (const auto& item : participants) {
         if (item.first == main_) continue;
         const auto source_window = reinterpret_cast<HWND>(item.first);
         auto& source = *item.second.client;
+        const auto current = [&] {
+            const auto from = entries_.find(item.first), to = entries_.find(destination.window().window.handle);
+            return !native_pending_ && from != entries_.end() && to != entries_.end() &&
+                from->second.client == item.second.client && to->second.client == destination_client;
+        };
         const auto blocked = quarantined_.find(item.first);
         if (blocked != quarantined_.end() && blocked->second == source.window().window) continue;
         std::vector<GUID> tabs;
@@ -239,41 +260,107 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         OwnedPidl folder;
         FolderSelection selection;
         std::uint64_t source_input = 0;
-        if (!source.CaptureNative(tabs, active, folder, selection, source_input)) continue;
+        const bool captured = source.CaptureNative(tabs, active, folder, selection, source_input);
+        if (!current()) return true;
+        if (!captured) continue;
         // COM may pump messages. Check both identities/scope immediately before
         // mutation; final source deletion also rechecks selection and input epoch.
         const auto source_identity = probe_.Inspect(source_window);
         const auto destination_identity = probe_.Inspect(reinterpret_cast<HWND>(main_));
+        if (!current()) return true;
         if (!source_identity || !(*source_identity == source.window().window) ||
             !destination_identity || !(*destination_identity == destination.window().window)) continue;
         const auto transfer_locations = ResolveFolderLocations({source_window, reinterpret_cast<HWND>(main_)});
+        if (!current()) return true;
         if (!InNativeScope(source_window, transfer_locations) ||
             !InNativeScope(reinterpret_cast<HWND>(main_), transfer_locations)) continue;
         GUID created{};
         std::uint64_t destination_input = 0;
-        std::vector<GUID> received;
-        GUID selected{};
-        OwnedPidl received_folder;
-        if (!destination.AddNative(folder.get(), created, destination_input) ||
-            !destination.ReadNative(received, selected, received_folder) ||
-            !InlineIsEqualGUID(created, selected) || !ILIsEqual(folder.get(), received_folder.get()) ||
-            !destination.RestoreNative(created, folder.get(), selection, destination_input) ||
-            !source.RemoveNative(active, folder.get(), selection, source_input)) {
-            // Native add/remove can finish after timeout; failure is not rollback.
-            // Quarantine instead of inferring source state or repeating the add.
-            quarantined_[item.first] = source.window().window;
-        } else {
-            native_transferred_ = true;
-            // Reveal only after both destination confirmation and source removal.
-            // Presentation failure must never repeat this completed transfer.
-            if (IsIconic(reinterpret_cast<HWND>(main_)) && !destination.RevealNative(created))
-                OutputDebugStringA("QTabs: transferred tab confirmed, minimized destination reveal failed\n");
+        // Record the mutation barrier before a callout can invalidate its
+        // entries. Acknowledged pending work resumes; an uncertain add cannot
+        // be repeated by recovery within this enablement session.
+        quarantined_[item.first] = source.window().window;
+        const bool added = destination.AddNative(folder.get(), created, destination_input);
+        if (!current()) return true;
+        if (added) {
+            auto pending = std::make_shared<NativeTransfer>();
+            pending->source = source.window(); pending->destination = destination.window();
+            pending->source_tab = active; pending->created = created;
+            pending->folder = std::move(folder); pending->selection = std::move(selection);
+            pending->source_input = source_input; pending->destination_input = destination_input;
+            native_pending_ = std::move(pending);
+            // The restore poll must run before a final folder confirmation:
+            // initial navigation is allowed to finish on subsequent passes.
+            ContinueNativeTransfer(transfer_locations);
         }
-        // One mutation per reconciliation bounds work and lets native lifecycle
-        // settle before handling another tab in a multi-tab source frame.
+        // One source-tab transfer per reconciliation bounds work and lets native
+        // lifecycle settle before handling another tab in a multi-tab source frame.
         break;
     }
     return true;
+}
+
+void WorkspaceController::ContinueNativeTransfer(const FolderLocations& locations)
+{
+    const auto pending = native_pending_;
+    if (!pending) return;
+    const auto source_key = pending->source.window.handle;
+    const auto destination_key = pending->destination.window.handle;
+    const auto source = entries_.find(source_key), destination = entries_.find(destination_key);
+    const auto abort = [&] {
+        if (native_pending_ != pending) return;
+        quarantined_[source_key] = pending->source.window;
+        native_pending_.reset();
+    };
+    if (source == entries_.end() || destination == entries_.end() ||
+        source->second.client->window() != pending->source ||
+        destination->second.client->window() != pending->destination) { abort(); return; }
+    const auto main = destination->second.client, incoming = source->second.client;
+    // Observe cancellation even when a loading Shell view lacks metadata.
+    if (!main->native_input_unchanged() || !incoming->native_input_unchanged()) { abort(); return; }
+    if (!InNativeScope(reinterpret_cast<HWND>(source_key), locations) ||
+        !InNativeScope(reinterpret_cast<HWND>(destination_key), locations)) return;
+    const auto current = [&] {
+        const auto from = entries_.find(source_key), to = entries_.find(destination_key);
+        return native_pending_ == pending && from != entries_.end() && to != entries_.end() &&
+            from->second.client == incoming && to->second.client == main &&
+            incoming->window() == pending->source && main->window() == pending->destination;
+    };
+    const bool restored = main->RestoreNative(pending->created, pending->folder.get(), pending->selection,
+        pending->destination_input, pending->restore_progress);
+    if (!current()) return;
+    if (!restored) {
+        if (!main->native_waiting()) abort();
+        return;
+    }
+    const auto final_locations = ResolveFolderLocations({reinterpret_cast<HWND>(source_key),
+        reinterpret_cast<HWND>(destination_key)});
+    // Shell automation can pump stop/recovery. Do not reuse attachment
+    // references across that callout or apply a batch to their replacements.
+    if (!current()) return;
+    if (!InNativeScope(reinterpret_cast<HWND>(source_key), final_locations) ||
+        !InNativeScope(reinterpret_cast<HWND>(destination_key), final_locations)) return;
+    std::vector<GUID> tabs;
+    GUID selected{};
+    OwnedPidl folder;
+    const bool confirmed = main->ReadNative(tabs, selected, folder);
+    if (!current()) return;
+    if (!confirmed || !InlineIsEqualGUID(selected, pending->created) ||
+        !ILIsEqual(folder.get(), pending->folder.get())) { abort(); return; }
+    const bool removed = incoming->RemoveNative(pending->source_tab, pending->folder.get(), pending->selection,
+        pending->source_input, *main);
+    if (!current()) return;
+    if (!removed) {
+        if (!incoming->native_waiting()) abort();
+        return;
+    }
+    const auto blocked = quarantined_.find(source_key);
+    if (blocked != quarantined_.end() && blocked->second == pending->source.window) quarantined_.erase(blocked);
+    native_pending_.reset();
+    native_transferred_ = true;
+    // Presentation cannot repeat an acknowledged source removal.
+    if (IsIconic(reinterpret_cast<HWND>(destination_key)) && !main->RevealNative(pending->created))
+        OutputDebugStringA("QTabs: transferred tab confirmed, minimized destination reveal failed\n");
 }
 
 bool WorkspaceController::Publish()

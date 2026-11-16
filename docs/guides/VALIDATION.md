@@ -42,6 +42,10 @@ strip resources/hover state, not live frame rates or Explorer resource usage.
 synthetic roots and typed fake actions, including reentrant selection changes,
 lease cancellation and destruction. It does not attach to Explorer or prove
 foreground activation under Windows policy.
+`workspace.bridge` also exercises the actual native client exchange against an
+owned message-only reply peer: acknowledged readiness/progress, timeout, wrong
+version/request/state, cancellation fences and late-completion reuse rejection.
+It does not attach to Explorer or validate native migration.
 `explorer.folder_selection` checks bounded file-selection/focus snapshots,
 view readiness, apply-once restoration, source-state checks and cancellation
 using fake public views and typed native-frame fixtures. Its optional

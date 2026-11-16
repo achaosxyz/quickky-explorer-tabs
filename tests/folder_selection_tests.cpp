@@ -1,5 +1,6 @@
 #include "explorer/folder_selection.h"
 #include "explorer/native_frame.h"
+#include "hook/native_input.h"
 
 #include <algorithm>
 #include <array>
@@ -226,6 +227,7 @@ struct Actions {
     void* active = nullptr;
     View* view = nullptr;
     unsigned removals = 0;
+    HRESULT remove_result = S_OK;
 };
 ULONG STDMETHODCALLTYPE ReleaseActions(void*) { return 1; }
 HRESULT STDMETHODCALLTYPE ReadTab(void* self, void* data)
@@ -237,7 +239,9 @@ HRESULT STDMETHODCALLTYPE ReadTab(void* self, void* data)
 HRESULT STDMETHODCALLTYPE RemoveTab(void* self, GUID)
 {
     auto& actions = *static_cast<Actions*>(self);
-    ++actions.removals; actions.last = actions.first;
+    ++actions.removals;
+    if (FAILED(actions.remove_result)) return actions.remove_result;
+    actions.last = actions.first;
     return S_OK;
 }
 
@@ -290,17 +294,18 @@ void TestFrameSelectionGuards()
         SameSelection(captured, Selection({2, 3}, 3)), "Capture via active browser public view");
     bool applied = false;
     fixture.view->selected = {};
-    Check(fixture.frame->RestoreSelection(GUID{99}, folder.pidl.get(), captured, applied, [] { return true; }) == E_ABORT &&
+    bool folder_ready = true;
+    Check(fixture.frame->RestoreSelection(GUID{99}, folder.pidl.get(), captured, applied, folder_ready, [] { return true; }) == E_ABORT &&
         !fixture.view->writes, "A different active GUID must never receive a selection write");
-    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, [] { return false; }) == E_ABORT &&
+    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, folder_ready, [] { return false; }) == E_ABORT &&
         !fixture.view->writes, "Target input change cancels before restoring");
     fixture.allowed = false;
-    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, [] { return true; }) == E_ABORT,
+    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, folder_ready, [] { return true; }) == E_ABORT,
         "Canceled lease prevents restoring");
     fixture.allowed = true;
     Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }) == E_ABORT && !fixture.actions.removals,
         "Changed source selection prevents source removal");
-    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, [] { return true; }) == S_OK,
+    Check(fixture.frame->RestoreSelection(active, folder.pidl.get(), captured, applied, folder_ready, [] { return true; }) == S_OK,
         "Restore through the native-frame owning-thread boundary");
     fixture.view->focused = 2;
     Check(fixture.frame->Remove(active, folder.pidl.get(), captured, [] { return true; }) == E_ABORT && !fixture.actions.removals,
@@ -318,12 +323,100 @@ void TestFrameSelectionGuards()
     auto replacement = Make<View>();
     replaced.view->after_write = [&] { replaced.browser->shell->current = replacement; };
     applied = false;
-    Check(replaced.frame->RestoreSelection(replaced.tab.id, location.get(), expected, applied, [] { return true; }) == E_ABORT &&
+    folder_ready = false;
+    Check(replaced.frame->RestoreSelection(replaced.tab.id, location.get(), expected, applied, folder_ready, [] { return true; }) == E_ABORT &&
         replaced.view->writes == 1 && !replacement->writes, "Reentrant view replacement cannot receive subsequent writes");
     FrameCase switched;
     switched.browser->shell->after_get = [&] { switched.tab.id = GUID{2}; };
     Check(switched.frame->CaptureSelection(tabs, active, folder, captured) == E_ABORT,
         "A source tab change during a public view call invalidates capture");
+}
+
+void TestInitialFolderReadiness()
+{
+    FrameCase loading;
+    loading.view->folder = 71;
+    const auto folder = Child(70);
+    auto expected = Selection({2}, 2);
+    bool applied = false;
+    bool folder_ready = false;
+    Check(loading.frame->RestoreSelection(loading.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == E_PENDING && !applied && !loading.view->writes,
+        "A created tab must wait for its initial folder, not abandon the source");
+    loading.view->folder = 70;
+    loading.view->ready = false;
+    Check(loading.frame->RestoreSelection(loading.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == E_PENDING && folder_ready && !applied,
+        "Initial folder observation must survive later readiness polls");
+    loading.view->ready = true;
+    Check(loading.frame->RestoreSelection(loading.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == S_OK && applied && loading.view->selected == std::vector<unsigned>{2},
+        "The same created tab must finish when its view becomes ready");
+    const auto writes = loading.view->writes;
+    Check(loading.frame->RestoreSelection(loading.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == S_OK && loading.view->writes == writes,
+        "Continuing the same restore must not repeat selection writes");
+    FrameCase changed;
+    changed.view->ready = false; applied = false; folder_ready = false;
+    Check(changed.frame->RestoreSelection(changed.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == E_PENDING && folder_ready, "Observe initial folder before delayed children");
+    changed.view->folder = 71;
+    Check(changed.frame->RestoreSelection(changed.tab.id, folder.get(), expected, applied, folder_ready,
+        [] { return true; }) == E_ABORT && !changed.view->writes,
+        "A later folder change must not be mistaken for initial loading");
+    Check(IsNativeRestoreProgress(0) && IsNativeRestoreProgress(kNativeRestoreFolderReady) &&
+        IsNativeRestoreProgress(kNativeRestoreFolderReady | kNativeRestoreWriteConsumed) &&
+        !IsNativeRestoreProgress(kNativeRestoreWriteConsumed) && !IsNativeRestoreProgress(4),
+        "Only valid restore-progress transitions are accepted");
+}
+
+void TestNativeInput()
+{
+    Check(!IsNativeTransferInput(WM_MOUSEMOVE, 0), "Ordinary hover must not cancel a native transfer");
+    Check(!IsNativeTransferInput(WM_MOUSEMOVE, MK_CONTROL | MK_SHIFT), "Modifiers alone do not turn hover into a drag");
+    for (const auto button : {MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_XBUTTON1, MK_XBUTTON2})
+        Check(IsNativeTransferInput(WM_MOUSEMOVE, button), "Button-held motion must cancel a native transfer");
+    for (const auto message : {WM_KEYDOWN, WM_KEYUP, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_RBUTTONDBLCLK, WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_XBUTTONDOWN, WM_NCLBUTTONDOWN, WM_NCXBUTTONUP})
+        Check(IsNativeTransferInput(message, 0), "Actionable input must still cancel a native transfer");
+    Check(!IsNativeTransferInput(WM_TIMER, 0) && !IsNativeTransferInput(WM_MOUSELEAVE, 0),
+        "Timer and hover bookkeeping are not native-transfer input");
+}
+
+void TestFinalRemovalGuards()
+{
+    const auto folder = Child(70);
+    auto selected = Selection({2}, 2);
+    FrameCase hover;
+    hover.view->selected = {2}; hover.view->focused = 2;
+    unsigned epoch = 1;
+    for (unsigned i = 0; i < 20; ++i) if (IsNativeTransferInput(WM_MOUSEMOVE, 0)) ++epoch;
+    Check(hover.frame->Remove(hover.tab.id, folder.get(), selected, [&] { return epoch == 1; }) == S_OK &&
+        hover.actions.removals == 1, "Hover must not strand a confirmed source tab");
+
+    FrameCase pending;
+    pending.view->selected = {2}; pending.view->focused = 2; pending.view->fail_focus = true;
+    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }) == E_PENDING &&
+        !pending.actions.removals, "Source read readiness must continue before any native remove");
+    pending.view->fail_focus = false;
+    pending.actions.remove_result = E_PENDING;
+    Check(pending.frame->Remove(pending.tab.id, folder.get(), selected, [] { return true; }) == E_UNEXPECTED &&
+        pending.actions.removals == 1, "An invoked native remove must never be treated as a retryable readiness poll");
+
+    HANDLE peer = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    Check(peer != nullptr, "Create owned destination-input fence");
+    struct CloseEvent { HANDLE value; ~CloseEvent() { CloseHandle(value); } } close{peer};
+    FrameCase source;
+    source.view->selected = {2}; source.view->focused = 2;
+    source.browser->shell->after_get = [&] { SetEvent(peer); };
+    Check(source.frame->Remove(source.tab.id, folder.get(), selected,
+        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }) == E_ABORT && !source.actions.removals,
+        "Destination input during source COM reads must prevent final native removal");
+    source.browser->shell->after_get = {};
+    ResetEvent(peer);
+    Check(source.frame->Remove(source.tab.id, folder.get(), selected,
+        [&] { return WaitForSingleObject(peer, 0) == WAIT_TIMEOUT; }) == S_OK && source.actions.removals == 1,
+        "An unchanged destination fence allows exactly one native source removal");
 }
 
 void TestEncoding()
@@ -633,6 +726,7 @@ int main(int argc, char** argv)
     try {
         Check(SUCCEEDED(initialized), "Initialize test-only COM apartment");
         TestEncoding(); TestRestore(); TestReentrancyAndDeferredConfirmation(); TestStability(); TestFrameSelectionGuards();
+        TestInitialFolderReadiness(); TestNativeInput(); TestFinalRemovalGuards();
         if (argc == 2 && std::strcmp(argv[1], "--shell-view") == 0) TestOwnedShellViews();
         else if (argc == 2 && std::strcmp(argv[1], "--native-views") == 0) TestNativeViewsReadOnly();
         CoUninitialize();

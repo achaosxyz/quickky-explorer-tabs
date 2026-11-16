@@ -13,21 +13,37 @@ The native backend retains a main frame and admits eligible source frames only
 after validating every folder against the optional test root. It snapshots the
 active source GUID/PIDL, acknowledges native destination creation, and removes
 only that same source GUID after destination selection restoration and source
-selection revalidation. Selection capture failure happens before add; restore or
-final source-state failure quarantines without deleting/retrying. Remaining source tabs are handled
+selection revalidation. Destination restoration performs bounded initial-folder
+readiness polls before the controller's final GUID/PIDL confirmation; a loading folder
+is not an immediate transfer failure. A single pending native transfer retains
+source/destination attachment identities, the source and created GUIDs, original
+folder/selection, input generations and restore progress. An acknowledged restore
+or pre-removal readiness poll resumes on a later pass without another add. Pending
+roots retain their leases while public folder coverage is incomplete; no further
+mutation is allowed until both scopes are confirmed. Proven out-of-scope paths,
+identity/lease loss or genuine changed state still abort rather than discarding
+the source. A write-ahead mutation barrier spans native add and final removal;
+recovery cannot lose an uncertain add merely because its entry changed. The
+barrier clears only on confirmed removal, or an explicit stop/new enablement.
+Entries cancel leases immediately on release, but in-flight exchanges
+retain shared client ownership. Every returning callout rechecks the same pending
+transfer and both original entry identities before continuing, publishing
+completion or revealing a destination. Unconfirmed mutation or final source-state
+failure quarantines without deleting/retrying. Remaining source tabs are handled
 on later reconciliations. Each pass reports confirmed native-transfer progress
 as a scheduling hint so the application can queue the next pass without waiting
-for its one-second recovery timer. The hint resets before every pass and on stop;
-it does not relax validation, authorize another mutation, or infer rollback.
-A mutation with an unsuccessful or uncertain outcome
-quarantines that source identity until disable/re-enable; automatic retries must
+for its one-second recovery timer. A known pending transfer also schedules a pass
+after 100 ms without claiming successful migration. The completion hint resets
+before every pass and on stop; it does not relax validation, authorize another
+mutation, or infer rollback. An unacknowledged mutation or settled validation
+failure blocks that source identity until disable/re-enable; automatic retries must
 not duplicate tabs. Disable/exit removes integration without splitting native
 tabs back into windows.
 
 Own workspace collection policy. On Windows 10, own Quickky tab identity,
 ordering, selection, and placement; on Windows 11, select the main native frame
 and coordinate native-drop transfer without duplicating native tab state or
-promising preserved browsing history/selection.
+promising intact browsing history or all view state.
 
 ## Contract
 

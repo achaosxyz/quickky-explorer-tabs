@@ -34,7 +34,13 @@ someone else's session. Never terminate Explorer to clean up a test.
    after destination GUID/PIDL and file-selection confirmation, never the whole
    multi-tab source. Create disposable files and repeat with `explorer.exe
    /select,"<test-file>"`, explicit multi-selection, focused-but-unselected items,
-   and empty folders. Confirm actual selected items/focus/visibility, not only the
+   and empty folders. Include ordinary mouse movement during aggregation: it must
+   not cancel the transfer. A pending restore must continue with the same created
+   GUID and must not add duplicate tabs on subsequent reconciliation passes.
+   For a single-tab source, require destruction of its actual root HWND, not only
+   disappearance from Shell automation. Preserve the remaining tabs of a multi-tab
+   source until each is individually confirmed and removed.
+   Confirm actual selected items/focus/visibility, not only the
    selected tab GUID. Repeat with a minimized main frame and slow-loading views.
    During capture/restore, change the source/target selection or active tab and
    stop the controller; a canceled/failed transfer must not discard the original.

@@ -1,4 +1,5 @@
 #include "common/hook_protocol.h"
+#include "hook/native_input.h"
 #include "explorer/native_tab_guard.h"
 #include "explorer/folder_location.h"
 #include "explorer/native_frame.h"
@@ -31,6 +32,7 @@ struct Attachment {
     GUID nonce{};
     ProcessHandle controller{nullptr, CloseHandle};
     ProcessHandle lease{nullptr, CloseHandle};
+    ProcessHandle input_changed{nullptr, CloseHandle};
     quickky::GuardRequest identity;
     WINDOWPLACEMENT original{sizeof(WINDOWPLACEMENT)};
     bool original_visible = true;
@@ -55,6 +57,7 @@ struct Attachment {
     ULONGLONG native_started = 0;
     bool native_executing = false;
     bool selection_applied = false;
+    bool selection_folder_ready = false;
     std::uint64_t input_epoch = 0;
     std::uint64_t native_input_epoch = 0;
     quickky::SelectionStability selection_stability;
@@ -81,6 +84,7 @@ bool Decode(LPARAM parameter, quickky::GuardRequest& request)
 
 void Detach(bool restore = true)
 {
+    if (attachment && attachment->input_changed) SetEvent(attachment->input_changed.get());
     if (attachment && attachment->initializing) {
         attachment->stop_requested = true;
         attachment->restore_allowed = attachment->restore_allowed && restore;
@@ -161,10 +165,9 @@ LRESULT CALLBACK Keyboard(int code, WPARAM wparam, LPARAM lparam)
         attachment->committed) {
         auto message = reinterpret_cast<MSG*>(lparam);
         if (message && GetAncestor(message->hwnd, GA_ROOT) == attachment->target &&
-            ((message->message >= WM_KEYFIRST && message->message <= WM_KEYLAST) ||
-                 (message->message >= WM_MOUSEFIRST && message->message <= WM_MOUSELAST) ||
-             (message->message >= WM_NCLBUTTONDOWN && message->message <= WM_NCXBUTTONDBLCLK))) {
+            quickky::IsNativeTransferInput(message->message, message->wParam)) {
             ++attachment->input_epoch;
+            if (attachment->input_changed) SetEvent(attachment->input_changed.get());
         }
         if (message && message->message == WM_KEYDOWN &&
             (message->wParam == 'T' || (attachment->identity.workspace != 2 &&
@@ -280,6 +283,7 @@ LRESULT QueueNativeCommand(const quickky::GuardRequest& request)
     lifetime->native_started = GetTickCount64();
     lifetime->native_input_epoch = lifetime->pending->input_epoch;
     lifetime->selection_applied = false;
+    lifetime->selection_folder_ready = false;
     lifetime->selection_stability = {};
     lifetime->selection_sample.reset();
     lifetime->sample_folder.reset();
@@ -345,7 +349,7 @@ void ExecuteNativeCommand()
     auto shared = lifetime->exchange;
     packet.result = E_ABORT;
     auto folder = quickky::CloneFolderSnapshot(packet.folder, packet.folder_bytes);
-    if ((command == quickky::GuardCommand::NativeCapture || command == quickky::GuardCommand::NativeRestore) &&
+    if (command == quickky::GuardCommand::NativeCapture &&
         GetTickCount64() - lifetime->native_started >= 800) {
         packet.result = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
     } else if (command == quickky::GuardCommand::NativeCapture) {
@@ -370,28 +374,45 @@ void ExecuteNativeCommand()
     } else if (folder && attachment == lifetime && ControllerAvailable()) {
         if (command == quickky::GuardCommand::NativeAdd) {
             // Guard the entire add-to-restore gap, not only the restore callback.
-            packet.input_epoch = lifetime->input_epoch;
-            packet.result = lifetime->native->Add(folder.get(), packet.created);
+            if (lifetime->input_changed && ResetEvent(lifetime->input_changed.get())) {
+                packet.input_epoch = lifetime->input_epoch;
+                packet.result = lifetime->native->Add(folder.get(), packet.created);
+            }
         } else if (command == quickky::GuardCommand::NativeRemove) {
             quickky::FolderSelection selection;
-            if (quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection))
-                packet.result = lifetime->native->Remove(packet.active, folder.get(), selection, [lifetime] {
+            ProcessHandle peer_input(OpenEventW(SYNCHRONIZE, FALSE,
+                quickky::NativeInputEventName(packet.destination_nonce).c_str()), CloseHandle);
+            if (peer_input && quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection))
+                packet.result = lifetime->native->Remove(packet.active, folder.get(), selection,
+                    [lifetime, peer = peer_input.get()] {
                     return attachment == lifetime && ControllerAvailable() &&
-                        lifetime->input_epoch == lifetime->native_input_epoch;
+                        lifetime->input_epoch == lifetime->native_input_epoch &&
+                        WaitForSingleObject(peer, 0) == WAIT_TIMEOUT;
                 });
         } else if (command == quickky::GuardCommand::NativeRestore) {
             quickky::FolderSelection selection;
-            if (quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection)) {
+            if (quickky::IsNativeRestoreProgress(packet.count) &&
+                quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection)) {
+                lifetime->selection_folder_ready = (packet.count & quickky::kNativeRestoreFolderReady) != 0;
+                lifetime->selection_applied = (packet.count & quickky::kNativeRestoreWriteConsumed) != 0;
                 packet.result = lifetime->native->RestoreSelection(packet.active, folder.get(), selection,
-                    lifetime->selection_applied, [lifetime] {
+                    lifetime->selection_applied, lifetime->selection_folder_ready, [lifetime] {
                         return attachment == lifetime && ControllerAvailable() &&
                             lifetime->input_epoch == lifetime->native_input_epoch;
                     });
+                // A successful no-write confirmation also consumes the write:
+                // later polls may verify it, but must not overwrite a change.
+                if (packet.result == S_OK) lifetime->selection_applied = true;
+                packet.count = (lifetime->selection_folder_ready ? quickky::kNativeRestoreFolderReady : 0) |
+                    (lifetime->selection_applied ? quickky::kNativeRestoreWriteConsumed : 0);
             }
         }
     }
+    if (command == quickky::GuardCommand::NativeCapture && packet.result == S_OK &&
+        (attachment != lifetime || !ControllerAvailable() || !lifetime->input_changed ||
+         !ResetEvent(lifetime->input_changed.get()))) packet.result = E_ABORT;
     if (packet.result == E_PENDING &&
-        (command == quickky::GuardCommand::NativeCapture || command == quickky::GuardCommand::NativeRestore) &&
+        command == quickky::GuardCommand::NativeCapture &&
         attachment == lifetime && ControllerAvailable()) {
         if (!lifetime->native_timer)
             lifetime->native_timer = SetTimer(nullptr, 0, 25, RetryNativeCommand);
@@ -552,11 +573,14 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
     }
     if (request.workspace > 3) return false;
     if (request.workspace == 2) {
-        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v8");
+        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v9");
         if (!native_message) return false;
         next->completed.reset(OpenEventW(EVENT_MODIFY_STATE, FALSE,
             (quickky::NativeMappingName(request.nonce) + L".Ready").c_str()));
         if (!next->completed) return false;
+        next->input_changed.reset(OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, FALSE,
+            quickky::NativeInputEventName(request.nonce).c_str()));
+        if (!next->input_changed) return false;
         next->mapping.reset(OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE,
             quickky::NativeMappingName(request.nonce).c_str()));
         if (!next->mapping) return false;
@@ -565,7 +589,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
         if (!next->exchange) return false;
     } else if (quickky::NativeTabGuard::CountTabs(target) != 1) return false;
     if (request.workspace == 1 && !layout_message) {
-        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v8");
+        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v9");
         if (!layout_message) return false;
     }
     if (GetPropW(target, kBindingProperty) || !SetPropW(target, kBindingProperty, next.get())) return false;

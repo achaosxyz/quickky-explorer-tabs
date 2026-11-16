@@ -34,7 +34,7 @@ such as tab identity, attachment identity, and cross-process request/result data
 
 ## Boundary
 
-`hook_protocol.h` defines the version-8 `WM_COPYDATA` header shared
+`hook_protocol.h` defines the version-9 `WM_COPYDATA` header shared
 by controller, scoped workspace DLL, and manual guard probe. It carries target
 HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
 labels, and explicit presentation/input commands. Payloads are value-only.
@@ -48,7 +48,7 @@ input appends an absolute PIDL snapshot (at most 64 KiB, including its terminato
 the header size covers the whole packet. Validate every item boundary and clone
 the bytes before acknowledging, without COM calls inside the receiver callback.
 
-Windows 11 adds a separate bounded `NativeExchange` mapping and completion event,
+Protocol 9 uses a separate bounded `NativeExchange` mapping and completion event,
 both derived from that nonce. It carries a monotonically correlated request,
 native GUIDs (at most 128), HRESULT, a folder PIDL (at most 64 KiB), and a separate
 selection snapshot (at most 64 KiB). Selection bytes contain a 32-bit count,
@@ -64,6 +64,21 @@ Unsupported versions/counts are rejected.
 Source capture and destination add return a lease-bound input generation. Remove
 and restore must echo it, so input during the controller/IPC gap is not silently
 accepted as a new baseline. These tokens are independent of request correlation.
+The hook advances them for keys, mouse buttons, wheels and button-held motion,
+not ordinary hover. This input classification does not change the wire layout;
+native selection, GUID, folder and view revalidation still apply independently.
+For `NativeRestore`, `count` carries folder-ready/write-consumed flags rather
+than a tab count. An acknowledged `E_PENDING` is a completed readiness poll, not
+an uncertain mutation. The controller retains those flags with the same created
+GUID/PIDL and input token for the next poll; writes cannot repeat after a consumed
+write or successful confirmation. Unacknowledged exchanges remain uncertain.
+Native attachments also share a nonce-named input-change event. Settled capture
+and destination add arm it; actionable input, detach or cancellation signal it without
+detaching ordinary workspaces. A remove request carries the destination nonce:
+the source opens that event and checks it after its COM reads, immediately before
+irreversible native removal. This closes the restore-to-remove input gap without
+passing process-local handles across processes. It cannot roll back a native
+call after that final decision boundary.
 `NativeReveal` uses the existing active-GUID field without a PIDL.
 It is a post-transfer presentation request, not another add/remove or
 permission to close a frame. Older protocol versions are rejected.

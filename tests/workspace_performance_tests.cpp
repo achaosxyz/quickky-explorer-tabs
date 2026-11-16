@@ -11,16 +11,24 @@ struct WorkspaceControllerTestAccess {
     static void Add(WorkspaceController& controller, NativeWindow window)
     {
         // Unprepared clients and an uninitialized probe keep the fixture free of IPC/COM.
-        controller.entries_.emplace(window, WorkspaceController::Entry{std::make_unique<HookClient>(), L"Kept"});
+        controller.entries_.emplace(window, WorkspaceController::Entry{std::make_shared<HookClient>(), L"Kept"});
     }
     static bool Contains(const WorkspaceController& controller, NativeWindow window)
     { return controller.entries_.count(window) != 0; }
+    static auto Hold(const WorkspaceController& controller, NativeWindow window)
+    { return controller.entries_.at(window).client; }
     static auto Snapshot(const WorkspaceController& controller) { return controller.SnapshotAttachments(); }
     static void Reconcile(WorkspaceController& controller, const FolderLocations& locations,
         const std::map<NativeWindow, WindowIdentity>& attachments)
     { controller.ReconcileEntries(locations, attachments); }
     static void Release(WorkspaceController& controller, NativeWindow window, const WindowIdentity& identity)
     { controller.ReleaseIfCurrent(window, identity); }
+    static void Pending(WorkspaceController& controller)
+    {
+        controller.native_pending_ = std::make_shared<WorkspaceController::NativeTransfer>();
+        controller.native_pending_->source.window.handle = 42;
+        controller.native_pending_->destination.window.handle = 84;
+    }
 };
 
 struct TabStripTestAccess {
@@ -84,6 +92,28 @@ void TestFolderBatchLifetimes()
 
 void TestPublication()
 {
+    {
+        quickky::GroupModel group;
+        quickky::CaptureCoordinator capture(group);
+        quickky::ExplorerWindowProbe probe;
+        quickky::HookLibrary library;
+        quickky::WorkspaceController controller(nullptr, capture, group, probe, library, L"");
+        using Access = quickky::WorkspaceControllerTestAccess;
+        Access::Native(controller, true);
+        Access::Pending(controller);
+        Check(controller.native_transfer_pending(), "An acknowledged add retains continuation state");
+        Check(controller.Refresh({}) && !controller.native_transfer_pending() &&
+            !controller.native_transfer_completed(), "Missing attachments retire pending work even with no main frame");
+        Access::Pending(controller);
+        Access::Add(controller, 42);
+        auto in_flight = Access::Hold(controller, 42);
+        std::weak_ptr<quickky::HookClient> retained = in_flight;
+        controller.Stop();
+        Check(!controller.native_transfer_pending() && !Access::Contains(controller, 42) && !retained.expired(),
+            "Stop removes entries but an in-flight call retains its canceled client");
+        in_flight.reset();
+        Check(retained.expired(), "A completed call releases its retired client");
+    }
     quickky::WorkspacePublicationState first, second;
     quickky::GuardRequest view;
     view.count = 2;

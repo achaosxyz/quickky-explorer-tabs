@@ -41,8 +41,8 @@ int main()
     }
     {
         WorkspaceRefreshSchedule schedule;
-        // Successful native transfers continue after readiness expires, but
-        // failed/unconfirmed moves never start a new continuation chain.
+        // Successful transfers and acknowledged pending readiness continue even
+        // after discovery's deadline. Failed/unconfirmed mutations do not.
         for (std::uint64_t now = 2000; now < 5000; now += 100) {
             CHECK(schedule.AfterRefresh(now, true) == 100);
             CHECK(schedule.Consume());

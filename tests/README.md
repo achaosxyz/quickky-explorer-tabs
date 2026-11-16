@@ -1,6 +1,6 @@
 # Tests
 
-CTest registers ten checks when `BUILD_TESTING` is enabled (the default).
+CTest registers twelve checks when `BUILD_TESTING` is enabled (the default).
 All checks retain explicit failure handling in Release builds; no third-party
 test framework is required. Timeouts are ten seconds, except the fifteen-second
 workspace bridge check and twenty-second instance/native-ABI checks.
@@ -69,7 +69,10 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   check selected/focused child PIDL encoding, empty/multiple selection, strict
   bounds and malformed input, delayed view/item readiness, apply-once confirmation,
   source selection/focus revalidation, cancellation, tab/view replacement and
-  reentrant writes. Native-frame fixtures expose a separate `IShellBrowser`
+  reentrant writes. They also distinguish initial-folder readiness from later
+  navigation, continue without repeating selection writes, ignore unpressed hover
+  while retaining drag/click/key protection, and reject destination input during
+  the source's COM reads before native removal. Native-frame fixtures expose a separate `IShellBrowser`
   service through `IServiceProvider`/`SID_STopLevelBrowser` and explicitly reject
   direct `IShellBrowser` and `IExplorerBrowser` queries on the opaque browser,
   matching the native-host service contract rather than an embedded control.
@@ -100,7 +103,12 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   configure/presentation bounds, creation interception, normal detach, lease
   cancellation recovery, prepare/commit rejection, authenticated close,
   destruction during initialization, root/child layout and label configuration,
-  directory boundaries, and locale resolution. Read-only Shell metadata cases
+  directory boundaries, and locale resolution. An owned message-only reply peer
+  exercises the real native client transport: acknowledged loading progress,
+  successful continuation, unconfirmed timeout, malformed response identity/state,
+  canceled input/lease fences, and rejection of late-completion reuse. This peer
+  performs no native actions and does not establish Explorer transfer support.
+  Read-only Shell metadata cases
   exclude Control Panel aliases/descendants/applets and namespace junctions,
   while retaining normal virtual roots and an owned ordinary folder with a
   Control Panel-like name. No management window is opened. It never

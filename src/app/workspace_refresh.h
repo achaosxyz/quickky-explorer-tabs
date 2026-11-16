@@ -22,9 +22,11 @@ public:
         return pending;
     }
 
-    unsigned AfterRefresh(std::uint64_t now, bool transferred) noexcept
+    // Continue for a completed native move or an acknowledged pending restore,
+    // never for a timed-out/unconfirmed mutation.
+    unsigned AfterRefresh(std::uint64_t now, bool continue_native) noexcept
     {
-        return transferred || now < retry_until_ ? Schedule(100) : 0;
+        return continue_native || now < retry_until_ ? Schedule(100) : 0;
     }
 
     void Reset() noexcept { pending_ = false; retry_until_ = 0; }
