@@ -34,7 +34,7 @@ such as tab identity, attachment identity, and cross-process request/result data
 
 ## Boundary
 
-`hook_protocol.h` defines the version-7 `WM_COPYDATA` header shared
+`hook_protocol.h` defines the version-8 `WM_COPYDATA` header shared
 by controller, scoped workspace DLL, and manual guard probe. It carries target
 HWND, controller PID/start time, attachment nonce, at most 32 fixed-size tab
 labels, and explicit presentation/input commands. Payloads are value-only.
@@ -50,12 +50,22 @@ the bytes before acknowledging, without COM calls inside the receiver callback.
 
 Windows 11 adds a separate bounded `NativeExchange` mapping and completion event,
 both derived from that nonce. It carries a monotonically correlated request,
-native GUIDs (at most 128), HRESULT, and a PIDL (at most 64 KiB). The copy-data
+native GUIDs (at most 128), HRESULT, a folder PIDL (at most 64 KiB), and a separate
+selection snapshot (at most 64 KiB). Selection bytes contain a 32-bit count,
+length-prefixed relative selected PIDLs (at most 256), then a length-prefixed
+optional focused PIDL (zero length means no focus). Empty selection is an explicit
+eight-byte snapshot. Invalid lengths, duplicate items and trailing bytes are
+rejected before use. `NativeCapture` returns settled selection; `NativeRestore`
+applies/confirms it for the requested GUID/folder. `NativeRemove` requires the
+expected selection and revalidates it before deleting the source GUID. The copy-data
 message only queues work; posted UI dispatch publishes the response before
 signaling completion. Timeout cancels the lease and forbids storage reuse.
 Unsupported versions/counts are rejected.
-`NativeReveal` uses the existing active-GUID field without a PIDL or new wire
-layout. It is a post-transfer presentation request, not another add/remove or
+Source capture and destination add return a lease-bound input generation. Remove
+and restore must echo it, so input during the controller/IPC gap is not silently
+accepted as a new baseline. These tokens are independent of request correlation.
+`NativeReveal` uses the existing active-GUID field without a PIDL.
+It is a post-transfer presentation request, not another add/remove or
 permission to close a frame. Older protocol versions are rejected.
 
 No container library, logging framework, or generic error hierarchy is selected.

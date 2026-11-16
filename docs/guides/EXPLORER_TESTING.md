@@ -31,7 +31,13 @@ someone else's session. Never terminate Explorer to clean up a test.
 5. Repeat with a separate, pre-existing two-tab test source at `Beta` and
    `Gamma`, focusing `Alpha` before enablement. Require all three folders to
    survive in one native frame. Transfer removes only an unchanged source GUID
-   after destination GUID/PIDL confirmation, never the whole multi-tab source.
+   after destination GUID/PIDL and file-selection confirmation, never the whole
+   multi-tab source. Create disposable files and repeat with `explorer.exe
+   /select,"<test-file>"`, explicit multi-selection, focused-but-unselected items,
+   and empty folders. Confirm actual selected items/focus/visibility, not only the
+   selected tab GUID. Repeat with a minimized main frame and slow-loading views.
+   During capture/restore, change the source/target selection or active tab and
+   stop the controller; a canceled/failed transfer must not discard the original.
 6. Stop the controller immediately after creation and while reconciliation is
    active. Require timely exit, restored native behavior, and preservation of
    the merged native tabs. Baseline roots/tabs must remain unchanged.
@@ -48,9 +54,22 @@ For a minimal manual transport/ABI check, stop the controller first and use:
 ```
 
 This probe mutates the explicitly named frames. It rejects out-of-scope roots,
-confirms the destination's selected GUID and PIDL, and removes one unchanged
-active source GUID. It is not a discovery tool or a general compatibility test.
+confirms the destination's selected GUID, PIDL and restored file selection, and
+removes one unchanged active source GUID/folder/selection. It is not a discovery
+tool or a general compatibility test.
 Do not substitute any pre-existing daily Explorer HWNDs.
+
+### Owned public Shell-view check
+
+```powershell
+.\build\vs2017-tabs\Debug\QTabsFolderSelectionTests.exe --shell-view
+```
+
+This creates hidden ExplorerBrowser controls in the test process and a unique
+temporary folder with disposable files. It verifies real public-view selection,
+focus and empty-folder behavior and removes only its own test artifacts. It does
+not inject into Explorer or establish native tab-transfer acceptance. CTest runs
+the synthetic cases only; this interactive-Shell-dependent check is separate.
 
 ### Windows 10 custom workspace
 

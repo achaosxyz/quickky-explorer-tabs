@@ -65,6 +65,15 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   missing GUID, selection failure, canceled lease, wrong thread, restore-time
   selection changes and reentrant destruction. It does not bind to Explorer or
   establish real transfer support.
+- `explorer.folder_selection`: fake public views and typed native-frame fixtures
+  check selected/focused child PIDL encoding, empty/multiple selection, strict
+  bounds and malformed input, delayed view/item readiness, apply-once confirmation,
+  source selection/focus revalidation, cancellation, tab/view replacement and
+  reentrant writes. A failed focus read is not treated as absent focus. Clock-only
+  checks cover stable capture and initially empty selection grace. This does not
+  exercise real Explorer IPC or native transfer. The optional `--shell-view` mode
+  uses hidden public ExplorerBrowser controls owned by the test process and
+  freshly created temporary files; it does not attach to Explorer or daily windows.
 - `workspace.performance`: counts custom publication decisions for unchanged
   passes, labels, selection, placement, external visibility, and new lifetimes.
   Hidden test-owned strips check visual-hover change detection, theme refresh,
@@ -94,8 +103,8 @@ does not establish OS-build compatibility or every native-tab entry point.
 
 `QuickkyNativeTransferProbe` is a manual, mutating Windows 11 integration tool,
 not a CTest. It validates an explicit directory boundary and two eligible HWNDs,
-then confirms native destination GUID/PIDL before removing only the source's
-unchanged active GUID. Never target daily Explorer windows. See the
+then confirms native destination GUID/PIDL and restored selection before removing
+only the source's unchanged active GUID/folder/selection. Never target daily Explorer windows. See the
 [Explorer testing SOP](../docs/guides/EXPLORER_TESTING.md).
 
 See [Development](../docs/guides/DEVELOPMENT.md) for configure/build/test commands.

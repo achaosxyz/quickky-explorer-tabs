@@ -57,8 +57,9 @@ Right-click the notification-area icon:
   remain separate. After a Windows update, use **Compatibility check** in the
   tray menu to inspect the current support status.
 - Up to 128 tabs on Windows 11 or 32 on Windows 10; extra windows remain separate.
-- A new window may appear briefly before collection. Native merging may reset
-  file selection and navigation history.
+- A new window may appear briefly before collection. Windows 11 attempts to
+  restore selected files and the focused item; if restoration cannot be confirmed,
+  the original window is retained. Navigation history is not transferred.
 - When QTabs is disabled or exits, Windows 10 windows return to separate windows;
   Windows 11 native tabs stay grouped in Explorer.
 

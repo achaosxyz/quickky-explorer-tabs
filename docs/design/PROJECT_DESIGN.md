@@ -13,8 +13,10 @@ tabs/transfer. The existing custom-tab bridge is not evidence of native transfer
 its Windows 11 clipping and creation-guard path is not the accepted backend.
 Native merge follows Explorer's tab-drop semantics, not an assertion that a
 browser object moves intact. A scoped cross-process native drag on the tested
-host merged the tab but lost selection and navigation history. Those limitations
-must remain explicit; native appearance is not evidence of state preservation.
+host merged the tab but lost selection and navigation history. The implementation
+now compensates for bounded file selection/focus through the public Shell view;
+this is separate from raw native drop behavior and still requires scoped native
+end-to-end acceptance. Navigation history is not preserved.
 
 This is an early preview, not complete native-tab replacement or general
 Windows 10/11 compatibility. Windows 11 uses five built-in accessor families and
@@ -163,8 +165,13 @@ pre-existing windows outside the selected test scope.
 
 The controller composes `WorkspaceController`, `HookClient`, and the Explorer
 adapters. Windows 11 retains a main native frame, snapshots source GUID/PIDL,
-uses the matched native drop-add action, confirms destination GUID/PIDL, then
-removes only the unchanged source GUID and verifies its absence. Multiple source
+captures a bounded file-selection/focus snapshot through the active host's public
+Shell view, uses the matched native drop-add action, confirms destination GUID/PIDL,
+and restores/confirms that selection before removing the unchanged source GUID.
+Final removal rechecks source selection as well as folder/GUID. Public view access
+or restoration failure preserves the source; uncertain mutations remain quarantined.
+`folder_selection` owns view capture, bounded child-PIDL encoding and restore.
+Multiple source
 tabs are transferred over successive reconciliations. Uncertain mutation results
 quarantine the source identity rather than retry an add that may have succeeded.
 Disable/exit removes integration but does not split native groups.
@@ -294,6 +301,7 @@ src/capture/{capture_coordinator,explorer_discovery,explorer_window_probe}.{h,cp
 src/group/{group_model,workspace_controller}.{h,cpp}
 src/hook/{explorer_hook.cpp,hook_client.h,hook_client.cpp}
 src/explorer/{native_tab_guard,folder_location,native_frame,native_abi}.{h,cpp}
+src/explorer/folder_selection.{h,cpp}
 src/explorer/native_abi_patterns.cpp
 src/explorer/native_abi_internal.h
 src/explorer/abi_patterns/pattern.h
@@ -310,6 +318,7 @@ tests/native_guard_probe.cpp
 tests/native_transfer_probe.cpp
 tests/app_instance_tests.cpp
 tests/native_abi_tests.cpp
+tests/folder_selection_tests.cpp
 tests/native_abi_reference_selection.cpp
 tests/abi_reference/{profile.h,registry.cpp,rejections.json,<VERSION>.cpp}
 tests/README.md
@@ -351,7 +360,7 @@ adds these concrete contracts:
   readiness retries and confirmed native-transfer continuations use 100 ms.
   This is scheduling policy, not attachment permission or a latency guarantee.
 - **Attachment:** the capture lifecycle and the original state required to undo
-  Quickky changes without closing the user's Explorer window. A version-7 bounded
+  Quickky changes without closing the user's Explorer window. A version-8 bounded
   `GuardRequest` binds commands to a sender HWND, controller lifetime and nonce;
   a per-window lifetime property and cancellation event protect local recovery.
   New input appends a bounded, validated PIDL snapshot; no native pointers cross
@@ -368,6 +377,15 @@ adds these concrete contracts:
   or fixed RVA.
   The target discovers tables and derives layout locally. Exact-image profiles
   are offline regression oracles only. Neither data type travels over IPC.
+- **Native file selection:** at most 256 selected child PIDLs and an optional
+  focused child, encoded within 64 KiB independently of the folder PIDL. Protocol
+  version 8 carries these bytes, never COM pointers. `NativeCapture` settles source
+  reads (50 ms unchanged, 200 ms grace for empty selections) and `NativeRestore`
+  waits for the exact destination view. Both use posted/timer UI work bounded to
+  800 ms, below the 2-second exchange deadline, without sleeps or repeated adds.
+  Restore is applied once, then only checked. Lease-bound input-generation tokens
+  span source capture-to-remove and destination add-to-restore, including IPC gaps;
+  intervening input cancels the guarded operation instead of overwriting the user.
 
 Concepts are not permission to introduce generic frameworks or speculative
 serialization. Concrete types and IPC payloads must be documented with their
@@ -474,8 +492,9 @@ The attachment flow is:
    ordinary Explorer window if attachment fails.
 4. Route Windows 10 Quickky actions through group policy and the target bridge.
    Windows 11 reads the active native tab, creates it through the destination's
-   tab-drop action, confirms the destination GUID/PIDL, and removes only that
-   source tab after source revalidation, verifying its absence. After confirmation,
+   tab-drop action, confirms the destination GUID/PIDL and restored file selection,
+   and removes only that source tab after folder/GUID/selection/input revalidation,
+   verifying its absence. After confirmation,
    a minimized destination receives a nonce-bound reveal command: revalidate/select
    the created GUID and restore the destination on its owning UI thread, preserving
    its pre-minimize placement, then reconfirming the selected GUID before requesting
@@ -521,7 +540,7 @@ Before a usable integration can be claimed, evidence must establish:
 - Correct tab switching, focus, taskbar/Alt+Tab behavior, placement, modal windows,
   drag-and-drop, and multi-monitor DPI handling.
 - Collection of supported launch sources without unrelated tab loss, with the
-  native-drop navigation-history and selection limitations stated explicitly.
+  native-drop navigation-history and bounded-selection limitations stated explicitly.
 - Restoration of hidden windows when the controller disconnects or exits.
 
 These gates are not fully verified; fixture tests and scoped host evidence

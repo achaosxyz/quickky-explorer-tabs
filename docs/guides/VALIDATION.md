@@ -28,7 +28,8 @@
 Run the Debug/Release build and CTest commands from
 [Development](DEVELOPMENT.md). Require `core.model`, `capture.discovery`,
 `explorer.native_guard`, `workspace.bridge`, `workspace.performance`, `hook.staging`,
-`app.refresh`, `app.instance`, `explorer.native_abi`, `explorer.native_frame`, and
+`app.refresh`, `app.instance`, `explorer.native_abi`, `explorer.native_frame`,
+`explorer.folder_selection`, and
 `app.smoke` to pass. The smoke
 test must close its message-only window before
 its timeout. Discovery fixtures are hidden windows in the test process, not
@@ -41,6 +42,11 @@ strip resources/hover state, not live frame rates or Explorer resource usage.
 synthetic roots and typed fake actions, including reentrant selection changes,
 lease cancellation and destruction. It does not attach to Explorer or prove
 foreground activation under Windows policy.
+`explorer.folder_selection` checks bounded file-selection/focus snapshots,
+view readiness, apply-once restoration, source-state checks and cancellation
+using fake public views and typed native-frame fixtures. Its optional
+`--shell-view` mode uses test-owned public Shell controls and temporary files,
+not native Explorer attachment; see [Explorer testing](EXPLORER_TESTING.md).
 `hook.staging` injects a failed runtime copy after creating a partial destination
 and requires cleanup of that file and its per-attempt directory. Discovery tests
 count deferred enumerations with controlled event/callback delivery, separate

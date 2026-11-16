@@ -60,12 +60,14 @@ int wmain(int argc, wchar_t** argv)
     std::vector<GUID> tabs;
     GUID active{};
     quickky::OwnedPidl folder;
-    ok = incoming.ReadNative(tabs, active, folder);
+    quickky::FolderSelection selection;
+    std::uint64_t source_input = 0, destination_input = 0;
+    ok = incoming.CaptureNative(tabs, active, folder, selection, source_input);
     std::cout << "source.snapshot=" << ok << " count=" << tabs.size() << std::endl;
     if (!ok || !(probe.Inspect(destination) == destination_id) || !(probe.Inspect(source) == source_id) ||
         !eligible(destination) || !eligible(source)) return 1;
     GUID created{};
-    ok = main.AddNative(folder.get(), created);
+    ok = main.AddNative(folder.get(), created, destination_input);
     std::cout << "destination.add=" << ok << std::endl;
     if (!ok) return 1;
     GUID selected{};
@@ -74,7 +76,10 @@ int wmain(int argc, wchar_t** argv)
         ILIsEqual(folder.get(), received.get());
     std::cout << "destination.confirm=" << ok << std::endl;
     if (!ok) return 1;
-    ok = incoming.RemoveNative(active, folder.get());
+    ok = main.RestoreNative(created, folder.get(), selection, destination_input);
+    std::cout << "destination.selection=" << ok << std::endl;
+    if (!ok) return 1;
+    ok = incoming.RemoveNative(active, folder.get(), selection, source_input);
     std::cout << "source.remove=" << ok << std::endl;
     return ok ? 0 : 1;
 }

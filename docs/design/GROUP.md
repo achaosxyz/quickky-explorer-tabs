@@ -12,7 +12,9 @@ See the [overall design](PROJECT_DESIGN.md).
 The native backend retains a main frame and admits eligible source frames only
 after validating every folder against the optional test root. It snapshots the
 active source GUID/PIDL, acknowledges native destination creation, and removes
-only that same source GUID after revalidation. Remaining source tabs are handled
+only that same source GUID after destination selection restoration and source
+selection revalidation. Selection capture failure happens before add; restore or
+final source-state failure quarantines without deleting/retrying. Remaining source tabs are handled
 on later reconciliations. Each pass reports confirmed native-transfer progress
 as a scheduling hint so the application can queue the next pass without waiting
 for its one-second recovery timer. The hint resets before every pass and on stop;

@@ -237,9 +237,11 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         std::vector<GUID> tabs;
         GUID active{};
         OwnedPidl folder;
-        if (!source.ReadNative(tabs, active, folder)) continue;
+        FolderSelection selection;
+        std::uint64_t source_input = 0;
+        if (!source.CaptureNative(tabs, active, folder, selection, source_input)) continue;
         // COM may pump messages. Check both identities/scope immediately before
-        // mutation; the target repeats source GUID/PIDL validation before remove.
+        // mutation; final source deletion also rechecks selection and input epoch.
         const auto source_identity = probe_.Inspect(source_window);
         const auto destination_identity = probe_.Inspect(reinterpret_cast<HWND>(main_));
         if (!source_identity || !(*source_identity == source.window().window) ||
@@ -248,13 +250,15 @@ bool WorkspaceController::RefreshNative(const std::map<NativeWindow, WindowCandi
         if (!InNativeScope(source_window, transfer_locations) ||
             !InNativeScope(reinterpret_cast<HWND>(main_), transfer_locations)) continue;
         GUID created{};
+        std::uint64_t destination_input = 0;
         std::vector<GUID> received;
         GUID selected{};
         OwnedPidl received_folder;
-        if (!destination.AddNative(folder.get(), created) ||
+        if (!destination.AddNative(folder.get(), created, destination_input) ||
             !destination.ReadNative(received, selected, received_folder) ||
             !InlineIsEqualGUID(created, selected) || !ILIsEqual(folder.get(), received_folder.get()) ||
-            !source.RemoveNative(active, folder.get())) {
+            !destination.RestoreNative(created, folder.get(), selection, destination_input) ||
+            !source.RemoveNative(active, folder.get(), selection, source_input)) {
             // Native add/remove can finish after timeout; failure is not rollback.
             // Quarantine instead of inferring source state or repeating the add.
             quarantined_[item.first] = source.window().window;

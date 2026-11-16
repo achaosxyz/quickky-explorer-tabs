@@ -51,6 +51,16 @@ struct Attachment {
     std::unique_ptr<quickky::NativeExchange> pending;
     quickky::GuardCommand pending_command = quickky::GuardCommand::NativeSnapshot;
     std::uint64_t sequence = 0;
+    UINT_PTR native_timer = 0;
+    ULONGLONG native_started = 0;
+    bool native_executing = false;
+    bool selection_applied = false;
+    std::uint64_t input_epoch = 0;
+    std::uint64_t native_input_epoch = 0;
+    quickky::SelectionStability selection_stability;
+    std::optional<quickky::FolderSelection> selection_sample;
+    quickky::OwnedPidl sample_folder;
+    GUID sample_tab{};
 };
 
 thread_local std::shared_ptr<Attachment> attachment;
@@ -83,6 +93,7 @@ void Detach(bool restore = true)
     if (!old) return;
     // Clear thread ownership before Win32 teardown can reenter our callbacks.
     if (old->timer) KillTimer(nullptr, old->timer);
+    if (old->native_timer) KillTimer(nullptr, old->native_timer);
     if (old->keyboard) UnhookWindowsHookEx(old->keyboard);
     old->guard.Stop();
     old->strip.Hide();
@@ -149,6 +160,12 @@ LRESULT CALLBACK Keyboard(int code, WPARAM wparam, LPARAM lparam)
     if (code >= 0 && wparam == PM_REMOVE && attachment && attachment->lease &&
         attachment->committed) {
         auto message = reinterpret_cast<MSG*>(lparam);
+        if (message && GetAncestor(message->hwnd, GA_ROOT) == attachment->target &&
+            ((message->message >= WM_KEYFIRST && message->message <= WM_KEYLAST) ||
+                 (message->message >= WM_MOUSEFIRST && message->message <= WM_MOUSELAST) ||
+             (message->message >= WM_NCLBUTTONDOWN && message->message <= WM_NCXBUTTONDBLCLK))) {
+            ++attachment->input_epoch;
+        }
         if (message && message->message == WM_KEYDOWN &&
             (message->wParam == 'T' || (attachment->identity.workspace != 2 &&
              (message->wParam == 'W' || message->wParam == VK_TAB))) &&
@@ -250,7 +267,9 @@ LRESULT QueueNativeCommand(const quickky::GuardRequest& request)
     if (!lifetime || !lifetime->committed || !lifetime->native || !lifetime->exchange || lifetime->pending ||
         (request.command != quickky::GuardCommand::NativeSnapshot &&
          request.command != quickky::GuardCommand::NativeAdd && request.command != quickky::GuardCommand::NativeRemove &&
-         request.command != quickky::GuardCommand::NativeReveal)) return 0;
+         request.command != quickky::GuardCommand::NativeReveal &&
+         request.command != quickky::GuardCommand::NativeCapture &&
+         request.command != quickky::GuardCommand::NativeRestore)) return 0;
     auto shared = lifetime->exchange;
     if (shared->version != quickky::kGuardVersion || shared->request != request.input_tab ||
         shared->request <= lifetime->sequence || InterlockedCompareExchange(&shared->state, 1, 0) != 0) return 0;
@@ -258,22 +277,80 @@ LRESULT QueueNativeCommand(const quickky::GuardRequest& request)
     std::memcpy(lifetime->pending.get(), shared, sizeof(quickky::NativeExchange));
     lifetime->sequence = lifetime->pending->request;
     lifetime->pending_command = request.command;
+    lifetime->native_started = GetTickCount64();
+    lifetime->native_input_epoch = lifetime->pending->input_epoch;
+    lifetime->selection_applied = false;
+    lifetime->selection_stability = {};
+    lifetime->selection_sample.reset();
+    lifetime->sample_folder.reset();
     // Native navigation may call COM. Execute from a posted UI message rather
     // than an input-synchronous WM_COPYDATA stack, where such callouts can fail.
     return PostMessageW(lifetime->target, native_message, 0, 0) ? 1 : 0;
 }
 
+void ExecuteNativeCommand();
+
+void CALLBACK RetryNativeCommand(HWND, UINT, UINT_PTR timer, DWORD)
+{
+    // TIMERPROC must not let an allocation/COM exception escape the UI pump.
+    try {
+        if (attachment && attachment->native_timer == timer) ExecuteNativeCommand();
+    } catch (...) { Detach(); }
+}
+
+HRESULT CaptureNativeSelection(const std::shared_ptr<Attachment>& lifetime)
+{
+    std::vector<GUID> tabs;
+    GUID active{};
+    quickky::FolderLocation folder;
+    quickky::FolderSelection selection;
+    const auto input_epoch = lifetime->input_epoch;
+    const auto result = lifetime->native->CaptureSelection(tabs, active, folder, selection);
+    if (result != S_OK) { lifetime->selection_stability = {}; return result; }
+    if (attachment != lifetime || !ControllerAvailable()) return E_ABORT;
+    if (input_epoch != lifetime->input_epoch) { lifetime->selection_stability = {}; return E_PENDING; }
+    if (lifetime->selection_sample && (!InlineIsEqualGUID(lifetime->sample_tab, active) ||
+        !ILIsEqual(lifetime->sample_folder.get(), folder.pidl.get()))) return E_ABORT;
+    const bool same = lifetime->selection_sample && quickky::SameSelection(*lifetime->selection_sample, selection);
+    const bool settled = lifetime->selection_stability.Observe(GetTickCount64(), same, selection.selected.empty());
+    auto& packet = *lifetime->pending;
+    if (!settled) {
+        lifetime->sample_tab = active;
+        lifetime->sample_folder = std::move(folder.pidl);
+        lifetime->selection_sample = std::move(selection);
+        return E_PENDING;
+    }
+    const auto bytes = ILGetSize(folder.pidl.get());
+    if (!bytes || bytes > sizeof(packet.folder) || tabs.size() > quickky::kMaxNativeTabs ||
+        !quickky::EncodeSelection(selection, packet.selection, sizeof(packet.selection), packet.selection_bytes)) return E_FAIL;
+    packet.count = static_cast<std::uint32_t>(tabs.size());
+    std::copy(tabs.begin(), tabs.end(), packet.tabs);
+    packet.active = active;
+    packet.input_epoch = input_epoch;
+    packet.folder_bytes = bytes;
+    std::memcpy(packet.folder, folder.pidl.get(), bytes);
+    return S_OK;
+}
+
 void ExecuteNativeCommand()
 {
     const auto lifetime = attachment;
-    if (!lifetime || !lifetime->pending || !lifetime->native || !ControllerAvailable()) return;
-    auto owned_packet = std::move(lifetime->pending);
-    auto& packet = *owned_packet;
+    if (!lifetime || !lifetime->pending || !lifetime->native || !ControllerAvailable() || lifetime->native_executing) return;
+    // Keep pending occupied while COM pumps messages: neither a duplicate post
+    // nor a reentrant request may execute the same native mutation twice.
+    lifetime->native_executing = true;
+    struct Executing { bool& flag; ~Executing() { flag = false; } } executing{lifetime->native_executing};
+    auto& packet = *lifetime->pending;
     const auto command = lifetime->pending_command;
     auto shared = lifetime->exchange;
     packet.result = E_ABORT;
     auto folder = quickky::CloneFolderSnapshot(packet.folder, packet.folder_bytes);
-    if (command == quickky::GuardCommand::NativeSnapshot) {
+    if ((command == quickky::GuardCommand::NativeCapture || command == quickky::GuardCommand::NativeRestore) &&
+        GetTickCount64() - lifetime->native_started >= 800) {
+        packet.result = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+    } else if (command == quickky::GuardCommand::NativeCapture) {
+        packet.result = CaptureNativeSelection(lifetime);
+    } else if (command == quickky::GuardCommand::NativeSnapshot) {
         std::vector<GUID> tabs;
         GUID active{};
         quickky::FolderLocation location;
@@ -292,17 +369,45 @@ void ExecuteNativeCommand()
         packet.result = lifetime->native->Reveal(packet.active);
     } else if (folder && attachment == lifetime && ControllerAvailable()) {
         if (command == quickky::GuardCommand::NativeAdd) {
+            // Guard the entire add-to-restore gap, not only the restore callback.
+            packet.input_epoch = lifetime->input_epoch;
             packet.result = lifetime->native->Add(folder.get(), packet.created);
         } else if (command == quickky::GuardCommand::NativeRemove) {
-            packet.result = lifetime->native->Remove(packet.active, folder.get());
+            quickky::FolderSelection selection;
+            if (quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection))
+                packet.result = lifetime->native->Remove(packet.active, folder.get(), selection, [lifetime] {
+                    return attachment == lifetime && ControllerAvailable() &&
+                        lifetime->input_epoch == lifetime->native_input_epoch;
+                });
+        } else if (command == quickky::GuardCommand::NativeRestore) {
+            quickky::FolderSelection selection;
+            if (quickky::DecodeSelection(packet.selection, packet.selection_bytes, selection)) {
+                packet.result = lifetime->native->RestoreSelection(packet.active, folder.get(), selection,
+                    lifetime->selection_applied, [lifetime] {
+                        return attachment == lifetime && ControllerAvailable() &&
+                            lifetime->input_epoch == lifetime->native_input_epoch;
+                    });
+            }
         }
     }
+    if (packet.result == E_PENDING &&
+        (command == quickky::GuardCommand::NativeCapture || command == quickky::GuardCommand::NativeRestore) &&
+        attachment == lifetime && ControllerAvailable()) {
+        if (!lifetime->native_timer)
+            lifetime->native_timer = SetTimer(nullptr, 0, 25, RetryNativeCommand);
+        if (lifetime->native_timer) return;
+        packet.result = E_FAIL;
+    }
+    if (lifetime->native_timer) { KillTimer(nullptr, lifetime->native_timer); lifetime->native_timer = 0; }
     // Removing the last source tab can destroy its root and detach reentrantly.
     // The local keepalive owns this mapping until the acknowledgment is complete.
     packet.state = 1;
     std::memcpy(shared, &packet, sizeof(packet));
     InterlockedExchange(&shared->state, 2);
     SetEvent(lifetime->completed.get());
+    lifetime->pending.reset();
+    lifetime->selection_sample.reset();
+    lifetime->sample_folder.reset();
 }
 
 LRESULT HandleRootMessage(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -447,7 +552,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
     }
     if (request.workspace > 3) return false;
     if (request.workspace == 2) {
-        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v7");
+        if (!native_message) native_message = RegisterWindowMessageW(L"QTabs.Native.v8");
         if (!native_message) return false;
         next->completed.reset(OpenEventW(EVENT_MODIFY_STATE, FALSE,
             (quickky::NativeMappingName(request.nonce) + L".Ready").c_str()));
@@ -460,7 +565,7 @@ bool Attach(HWND target, WPARAM sender, const quickky::GuardRequest& request)
         if (!next->exchange) return false;
     } else if (quickky::NativeTabGuard::CountTabs(target) != 1) return false;
     if (request.workspace == 1 && !layout_message) {
-        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v7");
+        layout_message = RegisterWindowMessageW(L"QTabs.Layout.v8");
         if (!layout_message) return false;
     }
     if (GetPropW(target, kBindingProperty) || !SetPropW(target, kBindingProperty, next.get())) return false;

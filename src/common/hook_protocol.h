@@ -9,13 +9,13 @@
 namespace quickky {
 
 constexpr ULONG_PTR kGuardProtocol = 0x514b4750;
-constexpr std::uint32_t kGuardVersion = 7;
+constexpr std::uint32_t kGuardVersion = 8;
 constexpr unsigned kMaxWorkspaceTabs = 32;
 constexpr unsigned kMaxNativeTabs = 128;
 enum class GuardCommand : std::uint32_t {
     Attach = 1, Status = 2, Detach = 3, Configure = 4, Present = 5, Input = 6,
     Commit = 7, Close = 8, NativeSnapshot = 9, NativeAdd = 10, NativeRemove = 11,
-    NativeReveal = 12
+    NativeReveal = 12, NativeCapture = 13, NativeRestore = 14
 };
 enum class TabInput : std::uint32_t { Select = 1, Close = 2, New = 3, Next = 4, Previous = 5 };
 // Diagnostic child/clipping chrome is an explicit fixture, never a platform fallback.
@@ -67,6 +67,7 @@ struct NativeExchange {
     volatile LONG state = 0; // 0: ready, 1: running, 2: completed
     std::uint32_t version = kGuardVersion;
     std::uint64_t request = 0;
+    std::uint64_t input_epoch = 0; // Lease-bound source-capture / destination-add token.
     HRESULT result = E_PENDING;
     std::uint32_t count = 0;
     GUID active{};
@@ -74,6 +75,8 @@ struct NativeExchange {
     GUID tabs[kMaxNativeTabs]{};
     std::uint32_t folder_bytes = 0;
     unsigned char folder[65536]{};
+    std::uint32_t selection_bytes = 0;
+    unsigned char selection[65536]{};
 };
 
 static_assert(std::is_trivially_copyable_v<GuardRequest>, "IPC requests must be value-only.");

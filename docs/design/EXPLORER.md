@@ -30,7 +30,9 @@ Windows 11 uses Explorer-owned tabs and the inspected native drop semantics.
 - Use the inspected native drop pipeline to merge tabs into the main frame.
   Preserve existing destination tabs and acknowledge native creation before
   removing a specific source tab. Do not promise intact browser-state migration:
-  the tested native drag itself loses selection and navigation history.
+  the raw native drop may lose selection and navigation history. QTabs separately
+  snapshots/restores a bounded file selection and focus; navigation history is
+  still not transferred. Unsupported selection/view access leaves the source intact.
 - Confirm transfer before treating a source as consumed. Never close a source
   merely because a request was sent, timed out, or opened a matching path.
 - Preserve every source tab in multi-tab roots; if a transfer cannot be performed
@@ -84,6 +86,23 @@ Active GUID/PIDL snapshots use the matched native `GetTabDataById` action on the
 owner thread; its title and PIDL outputs use task-allocator ownership. Controller
 scope validation remains public Shell automation. Native snapshots do not make
 cross-apartment Shell automation enumeration calls inside `WM_COPYDATA` handling.
+
+`folder_selection.h/.cpp` uses public `IExplorerBrowser::GetCurrentView` on the
+validated active browser, followed by `IFolderView` selection enumeration and focused
+item access. No additional private offsets are introduced. View-folder PIDL and
+active GUID must match before/after reentrant calls. Selection encoding rejects
+malformed, duplicate or excessive child PIDLs (256 items, 64 KiB total).
+The posted `NativeCapture` operation waits for stable source observations, giving
+an initially empty selection time for file-location launches to finish. This is
+bounded readiness, not a guarantee about a future external selection request.
+`NativeRestore` waits for the created view's folder and child readiness through
+`IFolderView2::GetSelectionState`, applies selection/focus once
+with ensure-visible semantics and confirms it before source removal. Timer retries
+never repeat the native add or override a changed active tab/input. Source removal
+requires the captured selection to still match; failure preserves the original.
+Canonical COM view identity is rechecked after callouts; matching a folder alone
+does not authorize writing to a replaced view. Input generation and a final
+non-pumping active-GUID check guard source deletion after selection capture.
 
 Native `+` is adapted by an instance-local tab-actions vtable copy and a scoped
 Ctrl+T handler, not global code patching or a second UI. The adapter keeps the

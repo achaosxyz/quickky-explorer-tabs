@@ -97,6 +97,7 @@ quickky_configure_target(quickky_capture)
 add_library(quickky_explorer STATIC
     src/explorer/native_tab_guard.cpp
     src/explorer/folder_location.cpp
+    src/explorer/folder_selection.cpp
     src/explorer/native_frame.cpp
     src/explorer/native_abi.cpp
     src/explorer/native_abi_patterns.cpp
@@ -216,6 +217,11 @@ if(BUILD_TESTING)
     quickky_configure_target(QuickkyNativeFrameTests)
     add_test(NAME explorer.native_frame COMMAND QuickkyNativeFrameTests)
     set_tests_properties(explorer.native_frame PROPERTIES TIMEOUT 10)
+    add_executable(QTabsFolderSelectionTests tests/folder_selection_tests.cpp)
+    target_link_libraries(QTabsFolderSelectionTests PRIVATE quickky_explorer)
+    quickky_configure_target(QTabsFolderSelectionTests)
+    add_test(NAME explorer.folder_selection COMMAND QTabsFolderSelectionTests)
+    set_tests_properties(explorer.folder_selection PROPERTIES TIMEOUT 10)
     add_executable(QTabsAppInstanceTests tests/app_instance_tests.cpp)
     target_link_libraries(QTabsAppInstanceTests PRIVATE quickky_settings)
     quickky_configure_target(QTabsAppInstanceTests)

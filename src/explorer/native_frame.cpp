@@ -4,6 +4,7 @@
 #include <cstring>
 #include <map>
 #include <psapi.h>
+#include <wrl/client.h>
 
 namespace quickky {
 namespace {
@@ -32,6 +33,13 @@ std::shared_ptr<NativeFrame> FindProxy(void* self)
 {
     const auto it = proxies.find(self);
     return it == proxies.end() ? nullptr : it->second.lock();
+}
+
+bool SameView(IFolderView* left, IFolderView* right)
+{
+    Microsoft::WRL::ComPtr<IUnknown> first, second;
+    return left && right && SUCCEEDED(left->QueryInterface(IID_PPV_ARGS(&first))) &&
+        SUCCEEDED(right->QueryInterface(IID_PPV_ARGS(&second))) && first.Get() == second.Get();
 }
 } // namespace
 
@@ -113,6 +121,68 @@ bool NativeFrame::Snapshot(std::vector<GUID>& tabs, GUID& active, FolderLocation
     return true;
 }
 
+HRESULT NativeFrame::ActiveView(IFolderView** view) const
+{
+    *view = nullptr;
+    if (!Valid() || !available_ || !available_()) return E_ABORT;
+    const auto bytes = static_cast<const unsigned char*>(actions_);
+    const auto active = *reinterpret_cast<IUnknown* const*>(bytes + layout_.active);
+    if (!active) return E_PENDING;
+    // The already-matched active browser is a COM object. Query its public
+    // interface rather than introducing a private view/member offset.
+    Microsoft::WRL::ComPtr<IExplorerBrowser> browser;
+    if (FAILED(active->QueryInterface(IID_PPV_ARGS(&browser)))) return E_NOINTERFACE;
+    if (!Valid() || !available_ || !available_()) return E_ABORT;
+    const auto result = browser->GetCurrentView(IID_PPV_ARGS(view));
+    return SUCCEEDED(result) ? result : E_PENDING;
+}
+
+HRESULT NativeFrame::CaptureSelection(std::vector<GUID>& tabs, GUID& active,
+    FolderLocation& folder, FolderSelection& selection)
+{
+    if (!available_ || !available_()) return E_ABORT;
+    if (!Snapshot(tabs, active, folder)) return E_PENDING;
+    Microsoft::WRL::ComPtr<IFolderView> view;
+    const auto resolved = ActiveView(&view);
+    if (FAILED(resolved)) return resolved;
+    const auto captured = ReadSelection(view.Get(), folder.pidl.get(), selection);
+    if (captured != S_OK) return captured;
+    std::vector<GUID> after;
+    GUID selected{};
+    FolderLocation confirmed;
+    if (!Snapshot(after, selected, confirmed) || !InlineIsEqualGUID(active, selected) ||
+        !ILIsEqual(folder.pidl.get(), confirmed.pidl.get()) || !available_ || !available_()) return E_ABORT;
+    Microsoft::WRL::ComPtr<IFolderView> current;
+    if (FAILED(ActiveView(&current)) || !SameView(view.Get(), current.Get()) ||
+        !ReadTabs(after, selected) || !InlineIsEqualGUID(active, selected) ||
+        !available_ || !available_()) return E_ABORT;
+    return S_OK;
+}
+
+HRESULT NativeFrame::RestoreSelection(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+    const FolderSelection& selection, bool& applied, const std::function<bool()>& unchanged)
+{
+    Microsoft::WRL::ComPtr<IFolderView> view;
+    const auto matches = [&] {
+        if (!Valid() || !available_ || !available_() || !unchanged || !unchanged()) return false;
+        std::vector<GUID> tabs;
+        GUID active{};
+        FolderLocation current;
+        if (!Snapshot(tabs, active, current) || !InlineIsEqualGUID(active, tab) ||
+            !ILIsEqual(current.pidl.get(), folder)) return false;
+        if (view) {
+            Microsoft::WRL::ComPtr<IFolderView> actual;
+            if (FAILED(ActiveView(&actual)) || !SameView(view.Get(), actual.Get())) return false;
+        }
+        return ReadTabs(tabs, active) && InlineIsEqualGUID(active, tab) &&
+            available_ && available_() && unchanged();
+    };
+    if (!matches()) return E_ABORT;
+    const auto resolved = ActiveView(&view);
+    if (FAILED(resolved)) return resolved;
+    return quickky::RestoreSelection(view.Get(), folder, selection, applied, matches);
+}
+
 HRESULT NativeFrame::AddOriginal(PCIDLIST_ABSOLUTE folder, int entry, GUID* created)
 {
     using Function = HRESULT (STDMETHODCALLTYPE*)(void*, PCIDLIST_ABSOLUTE, int, GUID*);
@@ -147,15 +217,25 @@ HRESULT NativeFrame::Add(PCIDLIST_ABSOLUTE folder, GUID& created)
     return reinterpret_cast<Select>(original_[5])(actions_, created);
 }
 
-HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder)
+HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
+    const FolderSelection& expected_selection, const std::function<bool()>& unchanged)
 {
-    // Keep naming/metadata COM callouts out of this final source revalidation.
-    // Admission has already checked the transfer's folder namespace.
+    if (!unchanged || !unchanged()) return E_ABORT;
+    std::vector<GUID> captured;
+    GUID selected{};
+    FolderLocation location;
+    FolderSelection current;
+    if (CaptureSelection(captured, selected, location, current) != S_OK ||
+        !InlineIsEqualGUID(tab, selected) || !expected_folder ||
+        !ILIsEqual(location.pidl.get(), expected_folder) ||
+        !SameSelection(expected_selection, current) || !unchanged()) return E_ABORT;
+    // Capture already confirmed the folder/view through COM. Final active-tab
+    // validation is non-pumping: do not introduce another callout after checking
+    // selection and the source input epoch immediately before deletion.
     std::vector<GUID> tabs;
     GUID active{};
-    FolderLocation folder;
-    if (!expected_folder || !Snapshot(tabs, active, folder) || !InlineIsEqualGUID(tab, active) ||
-        !ILIsEqual(folder.pidl.get(), expected_folder) || (available_ && !available_())) return E_ABORT;
+    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(tab, active) ||
+        !available_ || !available_() || !unchanged()) return E_ABORT;
     using Function = HRESULT (STDMETHODCALLTYPE*)(void*, GUID);
     const auto result = reinterpret_cast<Function>(original_[4])(actions_, tab);
     if (FAILED(result) || !IsWindow(root_)) return result;

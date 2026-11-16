@@ -463,7 +463,7 @@ void TestGuardOnlyProtocol(SyntheticTarget& target, HWND sender, HMODULE module)
     request.version = quickky::kGuardVersion + 1;
     CheckRejected(probe.Send(), "Reject guard attach with mismatched protocol version");
     request.version = quickky::kGuardVersion - 1;
-    CheckRejected(probe.Send(), "Reject the older protocol without native reveal");
+    CheckRejected(probe.Send(), "Reject the older protocol without file-selection snapshots");
     request.version = quickky::kGuardVersion;
     request.size = static_cast<std::uint32_t>(sizeof(request) - 1);
     CheckRejected(probe.Send(), "Reject malformed guard request size");

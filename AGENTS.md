@@ -28,8 +28,10 @@ or complete native-tab replacement.
    recognizes one of five built-in accessor families plus reviewed complete-entry
    byte templates with checked external address operands/shared references,
    discovering actual tables without fixed version/RVA selection
-   or symbol downloads. Versioned maps are offline test oracles only. Confirm destination GUID/PIDL before
-   deleting the revalidated source GUID, never a whole source frame. Reveal a
+   or symbol downloads. Versioned maps are offline test oracles only. Confirm
+   destination GUID/PIDL and bounded file-selection/focus restoration before
+   deleting the revalidated source GUID, never a whole source frame. Input tokens
+   span capture/add through removal/restoration; changed state preserves the source. Reveal a
    minimized main frame only after confirmed native transfer. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.
@@ -42,7 +44,9 @@ Do not present observation or model tests as working native-tab replacement,
 visible grouping, recovery, or locale selection. The `+` requirement is to open
 the active tab's current location. Windows 10 captures the new window; Windows 11
 creates a native tab without an additional strip. Do not promise intact history
-or selection: the observed native drop semantics do not preserve them.
+or all view state: raw native drop semantics do not preserve them. Bounded public
+Shell-view selection compensation is separate and still needs scoped native
+end-to-end acceptance; synthetic tests alone do not prove it.
 
 ## Modules
 

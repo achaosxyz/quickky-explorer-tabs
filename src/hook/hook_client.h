@@ -3,6 +3,7 @@
 #include "common/hook_protocol.h"
 #include "common/window_identity.h"
 #include "explorer/folder_location.h"
+#include "explorer/folder_selection.h"
 #include <vector>
 
 namespace quickky {
@@ -49,8 +50,13 @@ public:
     bool Present(const WINDOWPLACEMENT& placement, bool visible);
     bool Healthy();
     bool ReadNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& folder);
-    bool AddNative(PCIDLIST_ABSOLUTE folder, GUID& created);
-    bool RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder);
+    bool CaptureNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& folder,
+        FolderSelection& selection, std::uint64_t& input_epoch);
+    bool RestoreNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+        const FolderSelection& selection, std::uint64_t input_epoch);
+    bool AddNative(PCIDLIST_ABSOLUTE folder, GUID& created, std::uint64_t& input_epoch);
+    bool RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+        const FolderSelection& selection, std::uint64_t input_epoch);
     bool RevealNative(const GUID& tab);
     bool AcceptInput(HWND sender, const GuardRequest& request) const;
     void Cancel() noexcept;

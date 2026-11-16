@@ -220,7 +220,35 @@ bool HookClient::ReadNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& fo
     return true;
 }
 
-bool HookClient::AddNative(PCIDLIST_ABSOLUTE folder, GUID& created)
+bool HookClient::CaptureNative(std::vector<GUID>& tabs, GUID& active, OwnedPidl& folder,
+    FolderSelection& selection, std::uint64_t& input_epoch)
+{
+    NativeExchange packet;
+    if (!Exchange(GuardCommand::NativeCapture, packet) || !packet.count || packet.count > kMaxNativeTabs ||
+        !DecodeSelection(packet.selection, packet.selection_bytes, selection)) return false;
+    auto location = DescribeFolder(CloneFolderSnapshot(packet.folder, packet.folder_bytes));
+    if (!location) return false;
+    folder = std::move(location->pidl);
+    tabs.assign(packet.tabs, packet.tabs + packet.count);
+    active = packet.active;
+    input_epoch = packet.input_epoch;
+    return true;
+}
+
+bool HookClient::RestoreNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+    const FolderSelection& selection, std::uint64_t input_epoch)
+{
+    NativeExchange packet;
+    packet.active = tab;
+    packet.input_epoch = input_epoch;
+    packet.folder_bytes = folder ? ILGetSize(folder) : 0;
+    if (!packet.folder_bytes || packet.folder_bytes > sizeof(packet.folder) ||
+        !EncodeSelection(selection, packet.selection, sizeof(packet.selection), packet.selection_bytes)) return false;
+    std::memcpy(packet.folder, folder, packet.folder_bytes);
+    return Exchange(GuardCommand::NativeRestore, packet);
+}
+
+bool HookClient::AddNative(PCIDLIST_ABSOLUTE folder, GUID& created, std::uint64_t& input_epoch)
 {
     NativeExchange packet;
     packet.folder_bytes = folder ? ILGetSize(folder) : 0;
@@ -228,15 +256,19 @@ bool HookClient::AddNative(PCIDLIST_ABSOLUTE folder, GUID& created)
     std::memcpy(packet.folder, folder, packet.folder_bytes);
     if (!Exchange(GuardCommand::NativeAdd, packet)) return false;
     created = packet.created;
+    input_epoch = packet.input_epoch;
     return !InlineIsEqualGUID(created, GUID{});
 }
 
-bool HookClient::RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder)
+bool HookClient::RemoveNative(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+    const FolderSelection& selection, std::uint64_t input_epoch)
 {
     NativeExchange packet;
     packet.active = tab;
+    packet.input_epoch = input_epoch;
     packet.folder_bytes = folder ? ILGetSize(folder) : 0;
-    if (!packet.folder_bytes || packet.folder_bytes > sizeof(packet.folder)) return false;
+    if (!packet.folder_bytes || packet.folder_bytes > sizeof(packet.folder) ||
+        !EncodeSelection(selection, packet.selection, sizeof(packet.selection), packet.selection_bytes)) return false;
     std::memcpy(packet.folder, folder, packet.folder_bytes);
     return Exchange(GuardCommand::NativeRemove, packet);
 }

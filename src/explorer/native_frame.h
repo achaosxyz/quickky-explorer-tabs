@@ -1,6 +1,7 @@
 #pragma once
 
 #include "explorer/folder_location.h"
+#include "explorer/folder_selection.h"
 #include "common/hook_protocol.h"
 #include "explorer/native_abi.h"
 #include <array>
@@ -18,8 +19,13 @@ public:
     static std::shared_ptr<NativeFrame> Bind(HWND root);
     ~NativeFrame();
     bool Snapshot(std::vector<GUID>& tabs, GUID& active, FolderLocation& folder);
+    HRESULT CaptureSelection(std::vector<GUID>& tabs, GUID& active,
+        FolderLocation& folder, FolderSelection& selection);
+    HRESULT RestoreSelection(const GUID& tab, PCIDLIST_ABSOLUTE folder,
+        const FolderSelection& selection, bool& applied, const std::function<bool()>& unchanged);
     HRESULT Add(PCIDLIST_ABSOLUTE folder, GUID& created);
-    HRESULT Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder);
+    HRESULT Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
+        const FolderSelection& expected_selection, const std::function<bool()>& unchanged);
     // Post-transfer presentation only; never adds, removes or retries a tab.
     HRESULT Reveal(const GUID& tab);
     bool InstallPlus(std::weak_ptr<void> owner, std::function<bool()> available);
@@ -30,6 +36,7 @@ private:
     NativeFrame() = default;
     bool Valid() const;
     bool ReadTabs(std::vector<GUID>& tabs, GUID& active) const;
+    HRESULT ActiveView(IFolderView** view) const;
     HRESULT AddOriginal(PCIDLIST_ABSOLUTE folder, int entry, GUID* created);
     HRESULT AddAtOriginal(PCIDLIST_ABSOLUTE folder, int entry, int index, GUID* created);
     static HRESULT STDMETHODCALLTYPE Plus(void* self, PCIDLIST_ABSOLUTE folder, int entry, GUID* created);
