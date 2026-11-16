@@ -231,8 +231,13 @@ not execute-only or guarded pages. There is no download, runtime PDB parser, sym
 cache, or resolver worker. Read-only section scans discover candidate actions
 tables through their data-accessor slot, validate all thirteen complete entries,
 and independently locate a unique window table. Accessor/lookup relocation and
-derived fields follow the reviewed family rules; other entry bodies remain
-conservative complete-byte contracts. No general rel32 wildcarding is allowed.
+derived fields follow the reviewed family rules. Other entries use complete
+byte templates with explicit, disassembler-reviewed external rel32/RIP-relative
+operands, rather than raw whole-function SHA256. Opcode bytes, internal branches,
+field offsets and function extents remain exact. Each variable operand must resolve
+inside the expected image section permissions; shared reference identities must
+remain consistent across the matched interface. No runtime instruction decoder,
+version fallback, unchecked byte scanning or general rel32 wildcarding is allowed.
 Ambiguous tables, unmatched bodies or invalid storage reject mutation. The
 recognizer also caps readonly code-pointer candidates at 65,536 and accessor-family
 checks at 256 per image. Exceeding either budget rejects the entire image, never
@@ -358,7 +363,9 @@ adds these concrete contracts:
   (`en-US` or `zh-CN`). Runtime locale resolution reads the language preference
   or Windows UI language; no language-picker page is implemented.
 - **Native ABI family/variant:** an accessor-rule ID, reviewed function extents
-  and complete-entry/window-entry fingerprints, with no version or fixed RVA.
+  and complete-entry/window-entry byte templates, with explicit external operand
+  offsets, target section permissions and shared-reference IDs, but no version
+  or fixed RVA.
   The target discovers tables and derives layout locally. Exact-image profiles
   are offline regression oracles only. Neither data type travels over IPC.
 

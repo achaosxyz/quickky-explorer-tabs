@@ -2,7 +2,8 @@
 param(
     [string]$BuildDirectory = 'build/vs2017-tabs',
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
-    [string]$ResearchDirectory = 'build/research/abi-versions-20261107'
+    [string]$ResearchDirectory = 'build/research/abi-versions-20261107',
+    [hashtable]$ImageOverride = @{}
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,7 +48,7 @@ foreach ($sample in $samples) {
     $supported = $fixtures -contains $sample.Version
     $excluded = $negativeVersions -contains $sample.Version
     if (!$supported -and !$excluded) { continue } # Failed acquisition is not a negative ABI fixture.
-    $image = $sample.ImagePath
+    $image = if ($ImageOverride.ContainsKey($sample.Version)) { $ImageOverride[$sample.Version] } else { $sample.ImagePath }
     if (!$image -and $sample.RequestedVersion) {
         $provenance = Get-Content -LiteralPath (Join-Path $research "server-returned/$($sample.Version)/provenance.json") -Raw |
             ConvertFrom-Json

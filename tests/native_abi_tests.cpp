@@ -1,5 +1,6 @@
 #include "abi_reference/profile.h"
 #include "explorer/native_abi.h"
+#include "explorer/abi_patterns/pattern.h"
 
 #include <algorithm>
 #include <cstring>
@@ -88,6 +89,123 @@ void ChangeIdentity(std::vector<unsigned char>& image, const quickky::NativeImag
     }
 }
 
+// Exercise a real recognized image without using its version or oracle to grant
+// admission. All mutations stay inside an owned byte buffer, never Explorer.
+void CheckEntryRelinking(const std::vector<unsigned char>& original,
+    const quickky::NativeAbiDescriptor& abi)
+{
+    quickky::NativeAbiDescriptor selected;
+    quickky::NativeAbiLayout layout;
+    std::size_t family_count = 0;
+    const auto families = quickky::BuiltinNativeAbiFamilies(family_count);
+    const quickky::NativeAbiVariant* variant = nullptr;
+    for (std::size_t f = 0; f < family_count; ++f) {
+        if (families[f].rule != abi.accessor_rule) continue;
+        for (std::size_t v = 0; v < families[f].count && !variant; ++v) {
+            const auto& candidate = families[f].variants[v];
+            bool match = true;
+            for (unsigned slot = 0; slot < 13 && match; ++slot) {
+                if (slot == 8) continue;
+                const auto& p = candidate.entries[slot];
+                for (unsigned i = 0; i < p.length && match; ++i) {
+                    bool address = false;
+                    for (std::size_t r = 0; r < p.count; ++r)
+                        address |= i >= p.references[r].operand && i < p.references[r].operand + 4u;
+                    if (!address && original[abi.methods[slot] + i] != p.bytes[i]) match = false;
+                }
+            }
+            if (match) variant = &candidate;
+        }
+    }
+    Check(variant && variant->entries[0].count == 1, "find the complete QueryInterface rel32 template");
+    if (!variant || variant->entries[0].count != 1) return;
+    const auto& entry = variant->entries[0];
+    const auto& ref = entry.references[0];
+    const auto target = abi.methods[0] + ref.end + Read<std::int32_t>(original.data() + abi.methods[0] + ref.operand);
+    auto image = original;
+    Write<std::int32_t>(image.data() + abi.methods[0] + ref.operand,
+        -static_cast<std::int32_t>(abi.methods[0] + ref.end));
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) && !layout.actions,
+        "normalized branch to PE headers remains unsupported");
+    image = original;
+    Write<std::int32_t>(image.data() + abi.methods[0] + ref.operand,
+        static_cast<std::int32_t>(abi.actions_table - abi.methods[0] - ref.end));
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "normalized branch cannot target a readonly data table");
+    image = original;
+    Write<std::int32_t>(image.data() + abi.methods[0] + ref.operand, INT32_MAX);
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "normalized reference cannot escape the image with a large signed displacement");
+    image = original;
+    // This adjustment is part of the typed thunk, not an address operand.
+    image[abi.methods[0] + 3] ^= 8;
+    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+        "object adjustment is not weakened along with relative addresses");
+
+    image = original;
+    const auto relocated = static_cast<DWORD>(image.size());
+    image.resize(image.size() + 0x1000);
+    auto nt = Headers(image);
+    auto section = IMAGE_FIRST_SECTION(nt) + nt->FileHeader.NumberOfSections;
+    Check(reinterpret_cast<unsigned char*>(section + 1) <= image.data() + nt->OptionalHeader.SizeOfHeaders,
+        "relocated typed entry section fits header allocation");
+    *section = {};
+    section->VirtualAddress = relocated;
+    section->Misc.VirtualSize = section->SizeOfRawData = 0x1000;
+    section->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_CNT_CODE;
+    ++nt->FileHeader.NumberOfSections;
+    nt->OptionalHeader.SizeOfImage = static_cast<DWORD>(image.size());
+    std::copy_n(original.data() + abi.methods[0], entry.length, image.data() + relocated);
+    Write<std::uint64_t>(image.data() + abi.actions_table, nt->OptionalHeader.ImageBase + relocated);
+    Write<std::int32_t>(image.data() + relocated + ref.operand,
+        static_cast<std::int32_t>(target - relocated - ref.end));
+    Check(quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout) &&
+        selected.methods[0] == relocated && selected.actions_table == abi.actions_table,
+        "a relinked complete typed entry works without a new hash or DLL version");
+
+    // A repeated callee's address may move, but one use cannot independently
+    // change its identity while the other references retain the original target.
+    bool shared_checked = false;
+    for (unsigned a = 0; a < 13 && !shared_checked; ++a) {
+        if (a == 8) continue;
+        const auto& p = variant->entries[a];
+        for (std::size_t r = 0; r < p.count && !shared_checked; ++r) {
+            const auto& shared = p.references[r];
+            if (!(shared.permissions & IMAGE_SCN_MEM_EXECUTE)) continue;
+            for (unsigned b = a + 1; b < 13 && !shared_checked; ++b) {
+                if (b == 8) continue;
+                const auto& q = variant->entries[b];
+                for (std::size_t s = 0; s < q.count && !shared_checked; ++s) {
+                    if (shared.identity != q.references[s].identity) continue;
+                    image = original;
+                    Write<std::int32_t>(image.data() + abi.methods[a] + shared.operand,
+                        static_cast<std::int32_t>(abi.methods[8] - abi.methods[a] - shared.end));
+                    Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+                        "inconsistent references to a shared executable target reject the entire variant");
+                    shared_checked = true;
+                }
+            }
+        }
+    }
+    Check(shared_checked, "shared external-reference regression actually exercised");
+    bool data_checked = false;
+    for (unsigned slot = 0; slot < 13 && !data_checked; ++slot) {
+        if (slot == 8) continue;
+        const auto& p = variant->entries[slot];
+        for (std::size_t i = 0; i < p.count && !data_checked; ++i) {
+            const auto& data = p.references[i];
+            if (data.permissions & IMAGE_SCN_MEM_EXECUTE) continue;
+            image = original;
+            Write<std::int32_t>(image.data() + abi.methods[slot] + data.operand,
+                static_cast<std::int32_t>(abi.methods[8] - abi.methods[slot] - data.end));
+            Check(!quickky::RecognizeNativeAbi(image.data(), image.size(), 0, selected, layout),
+                "RIP-relative data operand cannot be redirected into executable code");
+            data_checked = true;
+        }
+    }
+    Check(data_checked, "RIP-relative data regression actually exercised");
+}
+
 void CheckModeRecognition(const std::vector<unsigned char>& original,
     const quickky::NativeAbiProfile* oracle, bool unsupported)
 {
@@ -122,6 +240,7 @@ void CheckModeRecognition(const std::vector<unsigned char>& original,
         "mode recognition ignores unknown identity and missing version resource");
     // Exhaustive mutation cases run once, not once per identical method family.
     if (!InlineIsEqualGUID(abi.image.pdb, BaselineAbi().image.pdb)) return;
+    CheckEntryRelinking(original, abi);
     for (unsigned slot = 0; slot < 13; ++slot) {
         image = original;
         image[abi.methods[slot]] ^= 1;
@@ -711,7 +830,9 @@ void CheckVerifiedImage(const std::vector<unsigned char>& original)
 int wmain(int argc, wchar_t** argv)
 {
     const bool expect_unsupported = argc == 3 && !std::wcscmp(argv[1], L"--unsupported-image");
-    if (argc != 1 && (argc != 3 || (!expect_unsupported && std::wcscmp(argv[1], L"--image")))) return 160;
+    const bool expect_recognized = argc == 3 && !std::wcscmp(argv[1], L"--recognized-image");
+    if (argc != 1 && (argc != 3 || (!expect_unsupported && !expect_recognized &&
+        std::wcscmp(argv[1], L"--image")))) return 160;
     RejectMalformedImages();
     CheckImageIdentity();
     CheckNativeMemory();
@@ -735,13 +856,22 @@ int wmain(int argc, wchar_t** argv)
         if (InlineIsEqualGUID(identity.pdb, candidate.pdb) && identity.age == candidate.age &&
             identity.size == candidate.size) registered = catalog + i;
     }
-    if (argc == 3 && !expect_unsupported)
+    if (argc == 3 && !expect_unsupported && !expect_recognized)
         Check(registered != nullptr, "explicit image fixture has a reviewed version map");
     CheckModeRecognition(image, registered, expect_unsupported);
     const auto previous_module = GetModuleHandleW(L"ExplorerFrame.dll");
     const auto report = quickky::InspectNativeAbiFile(path.c_str());
     Check(report.inspected && report.file_version != 0,
         "installed-file diagnostic reads the fixed resource without DLL initialization");
+    if (expect_recognized) Check(report.supported,
+        "production recognizes the unregistered image by normalized code, without adding its version");
+    if (expect_recognized && report.supported) {
+        quickky::NativeAbiDescriptor recognized;
+        quickky::NativeAbiLayout layout;
+        Check(quickky::RecognizeNativeAbi(image.data(), image.size(), 0, recognized, layout),
+            "recognize byte-buffer and file mapping consistently");
+        CheckEntryRelinking(image, recognized);
+    }
     Check(GetModuleHandleW(L"ExplorerFrame.dll") == previous_module,
         "image-resource diagnostic does not register a resolvable executable DLL");
     if (registered) Check(report.supported && report.file_version == registered->file_version,

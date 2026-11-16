@@ -257,15 +257,30 @@ bool detail::CheckDataAccessor(const NativeImageView& image, const NativeAbiDesc
 
 namespace {
 
-// Per-inspection scratch state. Index image pointers once, and hash complete
-// bodies once per (RVA, extent), instead of rescanning for every code variant.
-// Nothing here reads Explorer objects or executes any candidate function.
+// Shared external references retain their identity across all typed entries.
+// This is a bounded consistency check, not a transitive proof of callees' ABI.
+struct ReferenceBindings {
+    std::array<DWORD, 1024> targets{};
+    std::array<bool, 1024> present{};
+
+    bool Bind(unsigned identity, DWORD target)
+    {
+        if (!identity || identity > targets.size()) return false;
+        const auto i = identity - 1;
+        if (present[i]) return targets[i] == target;
+        targets[i] = target;
+        present[i] = true;
+        return true;
+    }
+};
+
+// Per-inspection scratch state. Index image pointers and unwind extents once.
+// Template matching neither decodes instructions nor executes candidate code.
 struct PatternScan {
     const NativeImageView& image;
     std::uintptr_t base;
     std::map<DWORD, DWORD> extents;
     std::vector<std::pair<DWORD, DWORD>> pointers;
-    std::map<std::uint64_t, std::array<unsigned char, 32>> hashes;
 
     bool Pointer(std::uint64_t value, std::uint32_t& rva) const
     {
@@ -315,20 +330,37 @@ struct PatternScan {
         return true;
     }
 
-    bool Match(DWORD rva, const NativeEntryFingerprint& pattern)
+    bool Match(DWORD rva, const NativeCodePattern& pattern, ReferenceBindings& bindings) const
     {
-        if (!pattern.length || pattern.length > 65536 || !image.Section(rva, pattern.length, true)) return false;
+        if (!pattern.bytes || !pattern.length || pattern.length > 65536 ||
+            pattern.count > 1024 || (pattern.count && !pattern.references) ||
+            !image.Section(rva, pattern.length, true)) return false;
         const auto extent = extents.find(rva);
         if (pattern.unwind ? extent == extents.end() || extent->second != pattern.length : extent != extents.end())
             return false;
-        const auto key = (static_cast<std::uint64_t>(rva) << 32) | pattern.length;
-        auto it = hashes.find(key);
-        if (it == hashes.end()) {
-            std::array<unsigned char, 32> digest{};
-            if (!HashBytes(image.bytes + rva, pattern.length, digest)) return false;
-            it = hashes.emplace(key, digest).first;
+        std::size_t cursor = 0;
+        for (std::size_t i = 0; i < pattern.count; ++i) {
+            const auto& ref = pattern.references[i];
+            if (ref.operand < cursor || ref.end != ref.operand + 4 || ref.end > pattern.length ||
+                std::memcmp(image.bytes + rva + cursor, pattern.bytes + cursor, ref.operand - cursor)) return false;
+            const auto target = static_cast<std::int64_t>(rva) + ref.end +
+                Read<std::int32_t>(image.bytes + rva + ref.operand);
+            if (target < 0 || target > MAXDWORD ||
+                (target >= rva && target < static_cast<std::int64_t>(rva) + pattern.length)) return false;
+            bool valid_section = false;
+            for (unsigned s = 0; s < image.nt->FileHeader.NumberOfSections; ++s) {
+                const auto& section = image.sections[s];
+                const auto length = std::max(section.Misc.VirtualSize, section.SizeOfRawData);
+                if (target < section.VirtualAddress || target - section.VirtualAddress >= length) continue;
+                constexpr DWORD permissions = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
+                valid_section = image.Range(static_cast<DWORD>(target), 1) &&
+                    (section.Characteristics & permissions) == ref.permissions;
+                break;
+            }
+            if (!valid_section || !bindings.Bind(ref.identity, static_cast<DWORD>(target))) return false;
+            cursor = ref.end;
         }
-        return std::equal(it->second.begin(), it->second.end(), pattern.sha256);
+        return !std::memcmp(image.bytes + rva + cursor, pattern.bytes + cursor, pattern.length - cursor);
     }
 };
 
@@ -392,16 +424,18 @@ bool RecognizeNativeAbi(const unsigned char* bytes, std::size_t size, std::uintp
             if (!detail::CheckAccessor(image, candidate, decoded)) continue;
             for (std::size_t v = 0; v < family.count; ++v) {
                 const auto& variant = family.variants[v];
+                ReferenceBindings references;
                 bool matches = true;
                 for (unsigned slot = 0; slot < 13; ++slot) {
-                    if (slot != 8 && !scan.Match(candidate.methods[slot], variant.entries[slot])) {
+                    if (slot != 8 && !scan.Match(candidate.methods[slot], variant.entries[slot], references)) {
                         matches = false; break;
                     }
                 }
                 if (!matches) continue;
                 DWORD window_table = 0;
                 for (const auto& w : scan.pointers) {
-                    if (!scan.Match(w.second, variant.window_entry)) continue;
+                    auto window_references = references;
+                    if (!scan.Match(w.second, variant.window_entry, window_references)) continue;
                     if (window_table && window_table != w.first) return false;
                     window_table = w.first;
                 }

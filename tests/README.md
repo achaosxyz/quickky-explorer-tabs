@@ -50,7 +50,12 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   The verified baseline additionally exercises relocated tables/accessors,
   ambiguous tables, every damaged typed entry, complete window-entry return,
   malformed unwind data, decoded field changes and diagnostic immediates with
-  rejected instruction/call opcode changes. Legacy catalog/fallback tests remain
+  rejected instruction/call opcode changes. Recognized images additionally check
+  a relocated entry with a repaired rel32, field corruption, invalid code/data
+  targets, signed reference bounds and broken shared-target relationships.
+  `--recognized-image PATH` requires recognition without an exact oracle; it is
+  used for a new installed image such as `26100.9974`, never Explorer attachment.
+  Legacy catalog/fallback tests remain
   in the test-only library; no such selector is linked into production.
   Other hosts report those positive cases as unavailable rather than claiming
   compatibility. No test downloads or parses PDBs, starts a resolver worker, or

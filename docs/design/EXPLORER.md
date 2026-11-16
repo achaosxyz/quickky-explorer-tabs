@@ -75,6 +75,11 @@ excluding execute-only and guarded pages. The existing
 13-slot tab-actions interface and typed drop entry point remain explicit private
 contracts. A new compiler or changed private behavior may require a new reviewed
 contract; finding symbols alone must never authorize native calls.
+Typed entries use full byte templates, not raw body hashes. Only external address
+operands emitted by offline disassembly may vary, with checked target section
+permissions and consistent shared references. Internal branch distances, field
+accesses, opcodes and extents are not masked. The accessor/lookup family checks
+retain their existing normalized structural contracts.
 Active GUID/PIDL snapshots use the matched native `GetTabDataById` action on the
 owner thread; its title and PIDL outputs use task-allocator ownership. Controller
 scope validation remains public Shell automation. Native snapshots do not make

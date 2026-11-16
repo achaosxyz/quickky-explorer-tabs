@@ -54,7 +54,8 @@ Right-click the notification-area icon:
 - Windows x86_64; tested on Windows 10 build 19045 and Windows 11 build 26300.
   Compatibility varies with the Windows and Explorer version.
 - Windows 11 uses built-in compatibility checks. Unsupported Explorer windows
-  remain separate.
+  remain separate. After a Windows update, use **Compatibility check** in the
+  tray menu to inspect the current support status.
 - Up to 128 tabs on Windows 11 or 32 on Windows 10; extra windows remain separate.
 - A new window may appear briefly before collection. Native merging may reset
   file selection and navigation history.

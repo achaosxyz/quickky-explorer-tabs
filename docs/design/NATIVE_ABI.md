@@ -194,11 +194,11 @@ input described in the overall design, not these ExplorerFrame research samples.
 Production uses `abi_patterns/pattern.h`, `native_abi_patterns.cpp` and five
 `abi_patterns/family_N.cpp` units. A family owns its reviewed data-accessor shape,
 lookup/cold-fragment checks and complete-entry variants. A variant contains only
-code fingerprints, extents and a window-entry fingerprint: no DLL version,
+byte templates, extents, checked address references and a window-entry template: no DLL version,
 CodeView identity, image size or locator RVA. Identical variants are deduplicated.
 The five families are separate contracts, not one permissive wildcard pattern.
-There are 52 deduplicated complete-entry variants across the 54 reference images:
-families 1 through 5 contain 3, 34, 1, 3 and 11 variants respectively.
+There are 36 deduplicated address-normalized entry variants across the 54 reference
+images: families 1 through 5 contain 3, 23, 1, 3 and 6 variants respectively.
 
 The `tests/abi_reference/<VERSION>.cpp` files, `profile.h` and `registry.cpp` are
 reference fixtures linked into the ABI test target only. Their independently
@@ -210,11 +210,16 @@ images; it is not a version allowlist or evidence of universal live compatibilit
 `native_abi.cpp` retains bounded image, metadata, memory, hashing and accessor
 validation. Recognition discovers addresses in the inspected image rather than
 shifting a fixture's RVAs. Accessor fields and their reviewed relative references
-can vary under the existing five rules. Other typed entries deliberately retain
-complete-byte fingerprints: a changed rel32 instruction there requires review,
-not unconditional displacement masking. This first mode-based implementation
-removes fixed locator/version dependence without pretending to understand every
-possible compiler-generated equivalent of a method.
+can vary under the existing five rules. Other typed entries use complete byte
+templates with explicit external address operands. Raw whole-body SHA256 is not
+a runtime admission criterion for those entries. Offline disassembly identifies
+the operand and instruction-end offsets; runtime checks every unmasked byte,
+function extent, signed target bounds and expected read/write/execute section
+permissions. Reference IDs preserve shared-target relationships across the
+interface. Internal branches and field/immediate operands remain exact. This
+permits relinking an established body, not arbitrary compiler-generated code or
+proof of every referenced function's behavior. Accessor/lookup normalization is
+unchanged; SHA256 remains useful for source provenance and exact test oracles.
 
 ### Verified reference images by family
 
@@ -229,10 +234,20 @@ Braced revision lists denote only the explicitly listed revisions, not ranges.
 | Family | Tested references | Complete-entry variants | Tested DLL fixed versions |
 | --- | --- | --- | --- |
 | 1 | 3 | 3 | `10.0.26100.{9278, 9549, 9818}` |
-| 2 | 36 | 34 | `10.0.26100.{1, 712, 1000, 1150, 1455, 1591, 1882, 2161, 2314, 2454, 2605, 2894, 3037, 3323, 3624, 3912, 4061, 4202, 4484, 4768, 5074, 6725, 7019, 7171, 7309, 7462, 7705, 7824, 7920, 8115, 8328, 8457, 8521, 8655, 8737, 8972}` |
+| 2 | 36 | 23 | `10.0.26100.{1, 712, 1000, 1150, 1455, 1591, 1882, 2161, 2314, 2454, 2605, 2894, 3037, 3323, 3624, 3912, 4061, 4202, 4484, 4768, 5074, 6725, 7019, 7171, 7309, 7462, 7705, 7824, 7920, 8115, 8328, 8457, 8521, 8655, 8737, 8972}` |
 | 3 | 1 | 1 | `10.0.28000.3086` |
 | 4 | 3 | 3 | `10.0.28000.{1761, 2525, 2605}` |
-| 5 | 11 | 11 | `10.0.22621.{3672, 3958, 4541, 4601, 4746, 5262, 5331, 5413, 5909, 5983, 6197}` |
+| 5 | 11 | 6 | `10.0.22621.{3672, 3958, 4541, 4601, 4746, 5262, 5331, 5413, 5909, 5983, 6197}` |
+
+Additional installed-image evidence, not an oracle or generation input:
+`10.0.26100.9974` from `System32/ExplorerFrame.dll`, SHA256
+`07fb43dee1863a28bfd6f69cb503fceae735570ec55955124c5b330061b16933`,
+CodeView `F8886B4F-52B8-73AB-4A57-43F389209ACE`, age 1, image size `0x327000`.
+Its family-1 accessor/layout and normalized entries match the existing contracts;
+no version record, new body or PDB download is needed. The 9 raw-body mismatches
+against `26100.9818` consist only of 170 external address operands. Offline
+recognition and reference mutation tests are distinct from live transfer support;
+there is no new scoped live acceptance for this installed image.
 
 `tests/abi_reference/rejections.json` registers the nine missing-interface images
 and four excluded accessor contracts. The sample runner requires each negative
@@ -255,7 +270,8 @@ The original native-operation live evidence is limited to family 1's
    Resolve the actual lookup rel32 from that recognized body, including rule 5's
    cold fragment/backedge. Derive fields only after the family contract passes.
 4. Read all thirteen actual table entries. Require a reviewed variant's complete
-   typed-entry fingerprints and boundaries; slot 8 uses its complete normalized
+   byte templates and boundaries, with checked external target sections and shared
+   reference identities; slot 8 uses its complete normalized
    family check, including the validated lookup relationship and field derivation.
 5. Independently find a unique readonly window-table pointer whose complete first
    entry matches that same variant. A reviewed leaf entry must include its full
@@ -407,6 +423,27 @@ move accessors/lookup/tables with repaired references, damage every typed entry,
 add duplicate candidates, corrupt function bounds and exercise ASLR. Excluded
 compact accessors and missing-interface images must remain unsupported.
 
+## Generating normalized entry templates
+
+`scripts/Generate-NativeAbiPatterns.py` is offline development tooling requiring
+Python 3 and the existing MSVC `dumpbin` tool, not a product dependency. Supply
+`--research PATH` for the retained inventories and `--dumpbin PATH`. It verifies
+each reference SHA256 and exact typed-entry oracle before disassembling temporary
+image copies without adjacent PDBs or symbol paths. Only decoded external rel32
+branches and RIP-relative operands with verified target permissions are variable;
+all other bytes remain in the generated template. Reference IDs are local to a
+complete variant, not fixed RVAs. Family checks remain hand-reviewed source.
+
+Generate only from the 54 registered exact references, then use `--check` to
+verify reproducibility without writing. `--image-override VERSION=PATH` can point
+to a retained WinSxS/archived image when Windows replaced the original installed
+baseline; it still must match that reference's SHA256. The sample runner has the
+equivalent `-ImageOverride @{ 'VERSION' = 'PATH' }`, also retaining checksum checks.
+Do not substitute the upgraded image into historical baseline evidence.
+An accepted normalized template is not evidence that a changed referenced helper
+still has the same behavior; private operations retain runtime object/storage
+validation and need scoped live acceptance before claiming migration support.
+
 ## Adding a reviewed mode variant
 
 1. Obtain an exact image and matching PDB, preserving the source records above.
@@ -431,8 +468,9 @@ Classify the change before editing a recognizer:
 | Observed change | Required treatment |
 | --- | --- |
 | Identity/version or table addresses change; all reviewed code contracts still match | Add reference evidence and tests only; do not add runtime version/RVA cases. |
+| External call/RIP-relative displacements change; unmasked bytes, target sections and shared references match | Reuse the normalized template. Do not add a per-version hash or ignore non-address operands. |
 | Object fields move inside a recognized accessor shape | Derive and validate the new fields from that code; never copy a nearby version's offsets. |
-| A complete typed-entry body changes while signatures, ownership and storage remain established | Review a new complete-entry variant under the existing family. Do not weaken existing fingerprints. |
+| Non-address bytes of a complete typed-entry body change while signatures, ownership and storage remain established | Review a new complete-entry variant under the existing family. Do not weaken opcode/field/extent checks. |
 | The accessor/lookup code shape, output layout, record stride or ownership changes | Establish a separate reviewed family/contract, or leave it unsupported. |
 | Required transfer primitives are absent | Keep the image unsupported; do not fabricate slots or reopen paths as a substitute. |
 

@@ -26,7 +26,8 @@ or complete native-tab replacement.
 3. Keep tabs disabled by default. Windows 10 custom groups require single-view
    windows and restore hidden members on disable/exit/controller loss. Windows 11
    recognizes one of five built-in accessor families plus reviewed complete-entry
-   code variants, discovering actual tables without fixed version/RVA selection
+   byte templates with checked external address operands/shared references,
+   discovering actual tables without fixed version/RVA selection
    or symbol downloads. Versioned maps are offline test oracles only. Confirm destination GUID/PIDL before
    deleting the revalidated source GUID, never a whole source frame. Reveal a
    minimized main frame only after confirmed native transfer. Native

@@ -5,12 +5,29 @@
 
 namespace quickky {
 
-// A reviewed implementation variant, never a DLL identity or an address map.
-// Slot 8 is checked by the complete accessor-family recognizer instead of a
-// raw hash, so its reviewed references and derived fields may change together.
+// Only offline-disassembled external address operands may vary. The instruction
+// end determines rel32/RIP-relative resolution; identity preserves shared targets
+// across the interface, and permissions describe the referenced image section.
+struct NativeCodeReference {
+    std::uint16_t operand = 0;
+    std::uint16_t end = 0;
+    std::uint32_t permissions = 0;
+    std::uint16_t identity = 0;
+};
+
+struct NativeCodePattern {
+    const unsigned char* bytes = nullptr;
+    std::uint32_t length = 0;
+    bool unwind = false;
+    const NativeCodeReference* references = nullptr;
+    std::size_t count = 0;
+};
+
+// Complete byte templates, never a DLL identity or fixed locator. Slot 8 retains
+// its family-specific accessor/lookup and storage-layout validation.
 struct NativeAbiVariant {
-    NativeEntryFingerprint entries[13]{};
-    NativeEntryFingerprint window_entry{};
+    NativeCodePattern entries[13]{};
+    NativeCodePattern window_entry{};
 };
 
 struct NativeAbiFamily {

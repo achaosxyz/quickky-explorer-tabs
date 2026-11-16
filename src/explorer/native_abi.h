@@ -26,9 +26,9 @@ struct NativeAbiDescriptor {
     std::uint32_t accessor_rule = 0;
 };
 
-// Complete typed-entry contracts, not accessor-only prefix matches. Leaf thunks
-// include their full jump/return sequence. Production families reuse this data
-// shape without the reference profiles' identities, versions or fixed locators.
+// Exact entry digests retained for the offline reference oracle. Production entry
+// matching uses address-normalized byte templates in abi_patterns/pattern.h;
+// accessor-family digests are separate normalized structural checks.
 struct NativeEntryFingerprint {
     std::uint32_t length = 0;
     bool unwind = false;
