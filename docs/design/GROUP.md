@@ -52,10 +52,12 @@ promising intact browsing history or all view state.
 - On Windows 11, select a surviving eligible main frame and merge subsequent
   eligible source frames through verified native transfers. Reconcile uncertain
   outcomes instead of repeating a transfer or closing a source blindly.
-- After a confirmed native transfer into a minimized main frame, request reveal
-  through its bound hook client, with the created GUID. Ordinary reconciliation,
-  unsupported candidates and failed/uncertain transfers never restore it. A failed
-  reveal must not change confirmed progress or retry the consumed source tab.
+- After every confirmed native transfer, request reveal through the destination's
+  bound hook client with the created GUID. Normal, maximized and minimized main
+  frames all request foreground activation and file-view keyboard focus; only
+  minimized frames are restored. Ordinary reconciliation, unsupported candidates
+  and failed/uncertain transfers never activate it. A failed reveal must not change
+  confirmed progress or retry the consumed source tab.
 - Scope grouping to the current user session and active virtual desktop.
 - Admit a window only after the integration confirms safe attachment.
 - After batch admission, retain a visible managed foreground window as active;

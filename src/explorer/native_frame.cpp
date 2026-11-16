@@ -255,32 +255,60 @@ HRESULT NativeFrame::Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
     return S_OK;
 }
 
-HRESULT NativeFrame::Reveal(const GUID& tab)
+HRESULT NativeFrame::Reveal(const GUID& tab, const std::function<bool()>& unchanged)
 {
     // Detachment clears the lease callback; absence is not permission to reveal.
-    if (!Valid() || !available_ || !available_()) return E_ABORT;
-    if (!IsIconic(root_)) return S_FALSE; // Do not activate ordinary reconciliation.
+    if (!Valid() || !available_ || !available_() || !unchanged || !unchanged()) return E_ABORT;
     std::vector<GUID> tabs;
     GUID active{};
     if (!ReadTabs(tabs, active) || std::none_of(tabs.begin(), tabs.end(),
         [&tab](const GUID& id) { return InlineIsEqualGUID(id, tab); })) return E_ABORT;
+    const auto current = [&] {
+        return ReadTabs(tabs, active) && InlineIsEqualGUID(active, tab) &&
+            available_ && available_() && unchanged();
+    };
     using Select = HRESULT (STDMETHODCALLTYPE*)(void*, GUID);
     const auto result = reinterpret_cast<Select>(original_[5])(actions_, tab);
     if (FAILED(result)) return result;
     // Selection and restore can pump messages or close the target. Never use a
     // replacement HWND, canceled lease, or a different selected tab to reveal.
-    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
-        !available_ || !available_()) return E_ABORT;
-    if (!IsIconic(root_)) return S_FALSE;
-    ShowWindow(root_, SW_RESTORE);
+    if (!current()) return E_ABORT;
+    if (IsIconic(root_)) ShowWindow(root_, SW_RESTORE);
     // Recheck restore-time selection before the explicit foreground request.
-    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
-        !available_ || !available_()) return E_ABORT;
+    if (!current()) return E_ABORT;
     if (IsIconic(root_)) return E_FAIL;
+    // A focused item (SVSI_FOCUSED) is not keyboard focus. Resolve the created
+    // tab's actual Shell view rather than focusing a guessed child or toolbar.
+    Microsoft::WRL::ComPtr<IFolderView> view;
+    auto resolved = ActiveView(&view);
+    if (!current()) return E_ABORT;
+    if (FAILED(resolved)) return resolved;
+    Microsoft::WRL::ComPtr<IShellView> shell;
+    resolved = view.As(&shell);
+    if (FAILED(resolved)) return resolved;
+    HWND window = nullptr;
+    resolved = shell->GetWindow(&window);
+    if (!current()) return E_ABORT;
+    if (FAILED(resolved)) return resolved;
+    const auto same_view = [&] {
+        Microsoft::WRL::ComPtr<IFolderView> actual;
+        HWND actual_window = nullptr;
+        return SUCCEEDED(ActiveView(&actual)) && SameView(view.Get(), actual.Get()) &&
+            SUCCEEDED(shell->GetWindow(&actual_window)) && actual_window == window && current();
+    };
+    // COM and WM_SETFOCUS can replace the view or detach this attachment. Check
+    // canonical identity, its reported HWND and root ownership around focus.
+    if (!same_view() || !IsChild(root_, window)) return E_ABORT;
     SetForegroundWindow(root_); // Best effort; respect Windows foreground policy.
-    if (!ReadTabs(tabs, active) || !InlineIsEqualGUID(active, tab) ||
-        !available_ || !available_()) return E_ABORT;
-    return S_OK;
+    if (!current()) return E_ABORT;
+    if (GetForegroundWindow() != root_) return E_ACCESSDENIED;
+    if (!same_view() || !IsChild(root_, window)) return E_ABORT;
+    if (GetForegroundWindow() != root_) return E_ACCESSDENIED;
+    SetFocus(window);
+    if (!same_view() || !IsChild(root_, window)) return E_ABORT;
+    const auto focused = GetFocus();
+    if (focused != window && !IsChild(window, focused)) return E_FAIL;
+    return GetForegroundWindow() == root_ ? S_OK : E_ACCESSDENIED;
 }
 
 bool NativeFrame::InstallPlus(std::weak_ptr<void> owner, std::function<bool()> available)

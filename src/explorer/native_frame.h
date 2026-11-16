@@ -27,8 +27,9 @@ public:
     HRESULT Add(PCIDLIST_ABSOLUTE folder, GUID& created);
     HRESULT Remove(const GUID& tab, PCIDLIST_ABSOLUTE expected_folder,
         const FolderSelection& expected_selection, const std::function<bool()>& unchanged);
-    // Post-transfer presentation only; never adds, removes or retries a tab.
-    HRESULT Reveal(const GUID& tab);
+    // Post-transfer activation/file-view focus in every window state. It never
+    // adds, removes or retries a tab, and cannot override later destination input.
+    HRESULT Reveal(const GUID& tab, const std::function<bool()>& unchanged);
     bool InstallPlus(std::weak_ptr<void> owner, std::function<bool()> available);
     void StopPlus();
 

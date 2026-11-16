@@ -370,7 +370,10 @@ void ExecuteNativeCommand()
             }
         }
     } else if (command == quickky::GuardCommand::NativeReveal && attachment == lifetime && ControllerAvailable()) {
-        packet.result = lifetime->native->Reveal(packet.active);
+        packet.result = lifetime->native->Reveal(packet.active, [&] {
+            return attachment == lifetime && ControllerAvailable() && lifetime->input_changed &&
+                WaitForSingleObject(lifetime->input_changed.get(), 0) == WAIT_TIMEOUT;
+        });
     } else if (folder && attachment == lifetime && ControllerAvailable()) {
         if (command == quickky::GuardCommand::NativeAdd) {
             // Guard the entire add-to-restore gap, not only the restore callback.

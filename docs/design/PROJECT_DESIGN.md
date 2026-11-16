@@ -36,6 +36,14 @@ coverage pauses its mutations without canceling the existing leases; identity
 loss, rejected scope, actual changed state and unacknowledged native side effects
 remain fail-closed. Stop discards continuation state after canceling its leases.
 
+Every confirmed native transfer requests destination activation, whether the main
+frame is normal, maximized or minimized. Restore only minimized frames, preserving
+their prior placement, then focus the created tab's public Shell-view window.
+Focused-item restoration is not keyboard/window activation. Presentation respects
+Windows foreground policy and later destination input; failure cannot retry a
+consumed transfer. Native-host foreground/keyboard acceptance is separate from
+the existing selected-item acceptance and requires scoped verification.
+
 This is an early preview, not complete native-tab replacement or general
 Windows 10/11 compatibility. Windows 11 uses five built-in accessor families and
 complete-entry code variants described in [native ABI adaptation](NATIVE_ABI.md).
@@ -520,10 +528,15 @@ The attachment flow is:
    tab-drop action, confirms the destination GUID/PIDL and restored file selection,
    and removes only that source tab after folder/GUID/selection/input revalidation,
    verifying its absence. After confirmation,
-   a minimized destination receives a nonce-bound reveal command: revalidate/select
-   the created GUID and restore the destination on its owning UI thread, preserving
-   its pre-minimize placement, then reconfirming the selected GUID before requesting
-   foreground activation under Windows policy. Failed/uncertain transfers do not
+   every destination receives a nonce-bound reveal command: revalidate/select
+   the created GUID and restore only a minimized destination on its owning UI
+   thread, preserving normal/maximized placement. Request foreground activation
+   and keyboard focus in the tab's public Shell view, independent of its selected
+   items. Resolve that view before activation, and set keyboard focus only while
+   the destination is foreground. Revalidate the GUID, lease, input fence,
+   canonical view and its reported HWND after callouts;
+   never focus a foreign or replaced view. Windows foreground policy still applies.
+   Failed/uncertain transfers do not
    reveal it; a reveal failure does not repeat or roll back an already confirmed
    transfer. Native merges are not split back into separate windows on disable/exit:
    the OS owns the resulting tabs.

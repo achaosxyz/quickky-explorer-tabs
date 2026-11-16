@@ -83,8 +83,12 @@ on a later controller pass. Detach cancels the capture timer; the callback/mappi
 keepalive survives teardown.
 `NativeReveal` uses the same authenticated posted-command
 path. Only a confirmed transfer requests this optional presentation operation;
-failure never retries native add/remove. It reselects the created GUID and restores
-only a minimized destination, with best-effort foreground activation.
+failure never retries native add/remove. It reselects the created GUID in normal,
+maximized and minimized destinations, restoring only minimized frames. It requests
+foreground activation and keyboard focus in the resolved public Shell-view window,
+without changing file selection or bypassing foreground policy. The destination's
+input-change event also guards presentation across reentrant calls; later genuine
+input cancels activation without undoing the confirmed transfer.
 Preparation carries no ABI descriptor. Commit recognizes a built-in code family
 against the loaded image and validates its accessor contract on the target thread
 before any private COM call.

@@ -359,8 +359,8 @@ void WorkspaceController::ContinueNativeTransfer(const FolderLocations& location
     native_pending_.reset();
     native_transferred_ = true;
     // Presentation cannot repeat an acknowledged source removal.
-    if (IsIconic(reinterpret_cast<HWND>(destination_key)) && !main->RevealNative(pending->created))
-        OutputDebugStringA("QTabs: transferred tab confirmed, minimized destination reveal failed\n");
+    if (!main->RevealNative(pending->created))
+        OutputDebugStringA("QTabs: transferred tab confirmed, destination activation/focus failed\n");
 }
 
 bool WorkspaceController::Publish()

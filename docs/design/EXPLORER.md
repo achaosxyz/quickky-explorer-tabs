@@ -131,13 +131,18 @@ work that has not started; an in-flight synchronous native call can still finish
 after timeout. An unconfirmed result is not rollback or proof that the source
 survives. Quarantine that source identity without retrying the add or attempting
 rollback; source removal is only attempted after destination confirmation.
-After source removal is confirmed, a minimized destination can receive a native
-reveal request. On its owning UI thread, validate that the created GUID remains
-present, select and confirm it, then use `SW_RESTORE` only while still minimized.
-Keep the original normal/maximized placement. Recheck window identity, selected
-GUID and the lease after reentrant calls, including restore and the foreground
-request. Request activation without bypassing Windows focus restrictions. This
-presentation step cannot undo or retry transfer.
+After every confirmed source removal, the destination receives a native reveal
+request, including normal and maximized frames. On its owning UI thread, validate
+that the created GUID remains present, select and confirm it, then use `SW_RESTORE`
+only while still minimized. Keep normal/maximized placement unchanged. Resolve
+the active public `IFolderView`/`IShellView` before requesting foreground activation,
+then focus its window rather than merely restoring a focused item. The view window
+must belong to that root; revalidate canonical identity, the currently reported
+view HWND, GUID, lease and input fence after callouts, including focus. Do not call
+`SetFocus` unless the destination is foreground after activation and view validation.
+Keyboard focus must be inside that view, and
+foreground rejection is reported rather than claiming activation. Do not bypass
+Windows focus restrictions. This presentation step cannot undo or retry transfer.
 The reference-image catalog and accessor families are listed in the
 [native ABI adaptation design](NATIVE_ABI.md).
 Only `10.0.26100.9549` has scoped live evidence;

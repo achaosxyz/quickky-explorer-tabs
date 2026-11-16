@@ -99,6 +99,8 @@ public:
     unsigned writes = 0;
     DWORD focus_flags = 0;
     std::function<void()> after_write;
+    HWND window = nullptr;
+    std::function<void()> after_get_window;
     HRESULT STDMETHODCALLTYPE GetFolder(REFIID iid, void** out) override { return QueryInterface(iid, out); }
     HRESULT STDMETHODCALLTYPE GetClassID(CLSID*) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE Initialize(PCIDLIST_ABSOLUTE) override { return E_NOTIMPL; }
@@ -162,7 +164,8 @@ public:
     HRESULT STDMETHODCALLTYPE SetRedraw(BOOL) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE IsMoveInSameFolder() override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE DoRename() override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetWindow(HWND* window) override { *window = nullptr; return S_OK; }
+    HRESULT STDMETHODCALLTYPE GetWindow(HWND* out) override
+    { *out = window; if (after_get_window) after_get_window(); return S_OK; }
     HRESULT STDMETHODCALLTYPE ContextSensitiveHelp(BOOL) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE TranslateAccelerator(MSG*) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE EnableModeless(BOOL) override { return E_NOTIMPL; }
@@ -245,6 +248,14 @@ HRESULT STDMETHODCALLTYPE RemoveTab(void* self, GUID)
     return S_OK;
 }
 
+HRESULT STDMETHODCALLTYPE SelectTab(void* self, GUID id)
+{
+    auto& actions = *static_cast<Actions*>(self);
+    if (!InlineIsEqualGUID(actions.first->id, id)) return E_INVALIDARG;
+    actions.active = actions.first->browser;
+    return S_OK;
+}
+
 struct FrameCase {
     int object = 0;
     HWND root = nullptr;
@@ -268,6 +279,7 @@ struct FrameCase {
         tab = {static_cast<IServiceProvider*>(browser.Get()), nullptr, {1}, 0};
         table[2] = reinterpret_cast<void*>(&ReleaseActions);
         table[4] = reinterpret_cast<void*>(&RemoveTab); table[8] = reinterpret_cast<void*>(&ReadTab);
+        table[5] = reinterpret_cast<void*>(&SelectTab);
         actions = {table, &tab, &tab + 1, tab.browser, view.Get(), 0};
         NativeAbiLayout layout;
         layout.tabs = offsetof(Actions, first); layout.active = offsetof(Actions, active);
@@ -368,6 +380,131 @@ void TestInitialFolderReadiness()
         IsNativeRestoreProgress(kNativeRestoreFolderReady | kNativeRestoreWriteConsumed) &&
         !IsNativeRestoreProgress(kNativeRestoreWriteConsumed) && !IsNativeRestoreProgress(4),
         "Only valid restore-progress transitions are accepted");
+}
+
+HWND FocusChild(HWND root)
+{
+    const auto child = CreateWindowW(L"STATIC", L"Owned focus fixture", WS_CHILD | WS_VISIBLE,
+        0, 0, 100, 60, root, nullptr, GetModuleHandleW(nullptr), nullptr);
+    Check(child != nullptr, "Create a test-owned view/control window");
+    return child;
+}
+
+LRESULT CALLBACK CancelOnFocus(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    if (message == WM_SETFOCUS) {
+        const auto allowed = reinterpret_cast<bool*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (allowed) *allowed = false;
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
+}
+
+void TestNativeViewFocus()
+{
+    for (const bool maximized : {false, true}) for (const bool minimized : {false, true})
+        for (const bool selected : {false, true}) {
+            FrameCase fixture;
+            fixture.view->window = FocusChild(fixture.root);
+            const auto other = FocusChild(fixture.root);
+            if (selected) { fixture.view->selected = {2, 3}; fixture.view->focused = 3; }
+            ShowWindow(fixture.root, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNOACTIVATE);
+            WINDOWPLACEMENT before{sizeof(before)};
+            Check(GetWindowPlacement(fixture.root, &before) != FALSE, "Read pre-activation placement");
+            SetFocus(other);
+            Check(GetFocus() == other, "Start keyboard focus outside the file view");
+            if (minimized) ShowWindow(fixture.root, SW_MINIMIZE);
+            const auto result = fixture.frame->Reveal(fixture.tab.id, [] { return true; });
+            Check((result == S_OK || result == E_ACCESSDENIED) && !IsIconic(fixture.root) &&
+                (IsZoomed(fixture.root) != FALSE) == maximized,
+                "Every destination state must request activation without changing placement");
+            if (result == S_OK) Check(GetForegroundWindow() == fixture.root &&
+                GetFocus() == fixture.view->window,
+                "Successful activation must focus the file view even with no selected files");
+            Check(!fixture.view->writes && fixture.view->selected ==
+                (selected ? std::vector<unsigned>{2, 3} : std::vector<unsigned>{}) &&
+                fixture.view->focused == (selected ? 3u : 0u),
+                "Keyboard activation is separate from focused-item/selection restoration");
+            WINDOWPLACEMENT after{sizeof(after)};
+            Check(GetWindowPlacement(fixture.root, &after) &&
+                EqualRect(&before.rcNormalPosition, &after.rcNormalPosition),
+                "Normal and maximized destinations retain their original placement");
+        }
+
+    FrameCase fixture;
+    fixture.view->window = FocusChild(fixture.root);
+    const auto other = FocusChild(fixture.root);
+    ShowWindow(fixture.root, SW_SHOWNOACTIVATE);
+    SetFocus(other);
+    bool unchanged = true;
+    fixture.view->after_get_window = [&] { unchanged = false; };
+    Check(fixture.frame->Reveal(fixture.tab.id, [&] { return unchanged; }) == E_ABORT && GetFocus() == other,
+        "Later destination input during COM lookup must prevent file-view focus");
+    fixture.view->after_get_window = {};
+    auto replacement = Make<View>();
+    replacement->window = FocusChild(fixture.root);
+    fixture.view->after_get_window = [&] { fixture.browser->shell->current = replacement; };
+    Check(fixture.frame->Reveal(fixture.tab.id, [] { return true; }) == E_ABORT && GetFocus() == other,
+        "A replaced Shell view must not receive stale keyboard focus");
+    fixture.view->after_get_window = {};
+    fixture.browser->shell->current = fixture.view;
+    const auto recreated_window = FocusChild(fixture.root);
+    unsigned view_queries = 0;
+    fixture.browser->shell->after_get = [&] {
+        if (++view_queries == 2) fixture.view->window = recreated_window;
+    };
+    Check(fixture.frame->Reveal(fixture.tab.id, [] { return true; }) == E_ABORT && GetFocus() == other,
+        "A recreated window on the same COM view must invalidate the captured focus HWND");
+    fixture.browser->shell->after_get = {};
+    FrameCase foreign;
+    fixture.view->window = FocusChild(foreign.root);
+    Check(fixture.frame->Reveal(fixture.tab.id, [] { return true; }) == E_ABORT && GetFocus() == other,
+        "A public view cannot redirect focus into a different root");
+
+    FrameCase during_focus;
+    WNDCLASSW type{};
+    type.lpfnWndProc = CancelOnFocus; type.hInstance = GetModuleHandleW(nullptr);
+    type.lpszClassName = L"QTabs.FocusCancellationFixture";
+    Check(RegisterClassW(&type) != 0, "Register an owned focus-callout fixture");
+    during_focus.view->window = CreateWindowW(type.lpszClassName, L"Owned focus callback",
+        WS_CHILD | WS_VISIBLE, 0, 0, 100, 60, during_focus.root, nullptr, type.hInstance, nullptr);
+    Check(during_focus.view->window != nullptr, "Create an owned focus-callout view");
+    const auto initial = FocusChild(during_focus.root);
+    ShowWindow(during_focus.root, SW_SHOWNOACTIVATE);
+    SetFocus(initial);
+    SetWindowLongPtrW(during_focus.view->window, GWLP_USERDATA,
+        reinterpret_cast<LONG_PTR>(&during_focus.allowed));
+    const auto focused = during_focus.frame->Reveal(during_focus.tab.id, [] { return true; });
+    Check((focused == E_ABORT && !during_focus.allowed) ||
+        (focused == E_ACCESSDENIED && during_focus.allowed),
+        "Focus cancellation or foreground denial must not report successful activation");
+
+    FrameCase denied;
+    denied.view->window = CreateWindowW(type.lpszClassName, L"Owned foreground-denial view",
+        WS_CHILD | WS_VISIBLE, 0, 0, 100, 60, denied.root, nullptr, type.hInstance, nullptr);
+    Check(denied.view->window != nullptr, "Create a foreground-denial focus sentinel");
+    ShowWindow(denied.root, SW_SHOWNOACTIVATE);
+    SetFocus(FocusChild(denied.root));
+    SetWindowLongPtrW(denied.view->window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&denied.allowed));
+    ShowWindow(foreign.root, SW_SHOWNOACTIVATE);
+    SetForegroundWindow(foreign.root);
+    SetFocus(fixture.view->window);
+    unsigned activation_queries = 0;
+    bool foreground_seen = false, switch_attempted = false, switched = false;
+    denied.browser->shell->after_get = [&] {
+        foreground_seen = foreground_seen || GetForegroundWindow() == denied.root;
+        if (++activation_queries == 3) {
+            switch_attempted = true;
+            SetForegroundWindow(foreign.root);
+            switched = GetForegroundWindow() == foreign.root;
+        }
+    };
+    const auto refused = denied.frame->Reveal(denied.tab.id, [] { return true; });
+    Check(!foreground_seen || switch_attempted,
+        "Focus must not run before the post-activation view/foreground check");
+    if (!switch_attempted || switched) Check(refused == E_ACCESSDENIED && denied.allowed &&
+        GetFocus() != denied.view->window,
+        "Foreground denial must prevent keyboard focus, including after a COM callout");
+    else std::cout << "Controlled foreground switch denied by Windows; late-denial assertion skipped.\n";
 }
 
 void TestNativeInput()
@@ -726,7 +863,7 @@ int main(int argc, char** argv)
     try {
         Check(SUCCEEDED(initialized), "Initialize test-only COM apartment");
         TestEncoding(); TestRestore(); TestReentrancyAndDeferredConfirmation(); TestStability(); TestFrameSelectionGuards();
-        TestInitialFolderReadiness(); TestNativeInput(); TestFinalRemovalGuards();
+        TestInitialFolderReadiness(); TestNativeViewFocus(); TestNativeInput(); TestFinalRemovalGuards();
         if (argc == 2 && std::strcmp(argv[1], "--shell-view") == 0) TestOwnedShellViews();
         else if (argc == 2 && std::strcmp(argv[1], "--native-views") == 0) TestNativeViewsReadOnly();
         CoUninitialize();

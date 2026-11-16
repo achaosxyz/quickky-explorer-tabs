@@ -43,6 +43,21 @@ struct Tab {
 };
 static_assert(sizeof(Tab) == 40, "Synthetic native tab record.");
 
+// Presentation guards use an unsupported but valid COM browser. Public-view
+// keyboard focus is covered by the typed Shell fixtures in folder_selection.
+struct Browser final : IUnknown {
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override
+    {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (!IsEqualIID(iid, IID_IUnknown)) return E_NOINTERFACE;
+        *out = static_cast<IUnknown*>(this);
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
+    ULONG STDMETHODCALLTYPE Release() override { return 1; }
+};
+
 struct Actions {
     void** table = nullptr;
     Tab* first = nullptr;
@@ -109,7 +124,8 @@ void TestReveal(bool maximized)
     void* methods[13]{};
     methods[2] = reinterpret_cast<void*>(&Release);
     methods[5] = reinterpret_cast<void*>(&Select);
-    int first_browser = 1, second_browser = 2, object = 0;
+    Browser first_browser, second_browser;
+    int object = 0;
     Tab tabs[]{{&first_browser, nullptr, {1}, 0}, {&second_browser, nullptr, {2}, 0}};
     Actions actions{methods, tabs, tabs + 2, &first_browser};
     SetWindowLongPtrW(root.window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&actions));
@@ -118,59 +134,61 @@ void TestReveal(bool maximized)
     layout.active = offsetof(Actions, selected);
     auto frame = quickky::NativeFrameTestAccess::Create(root.window, &object, &actions,
         methods, layout, [&actions] { return actions.allowed; });
+    const auto reveal = [&](const GUID& id) { return frame->Reveal(id, [] { return true; }); };
     ShowWindow(root.window, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNOACTIVATE);
     WINDOWPLACEMENT before{sizeof(before)};
     Check(GetWindowPlacement(root.window, &before) != FALSE, "Read original placement");
     ShowWindow(root.window, SW_MINIMIZE);
     Check(IsIconic(root.window) != FALSE, "Minimize the synthetic destination");
 
-    Check(FAILED(frame->Reveal(GUID{99})) && actions.selections == 0 && IsIconic(root.window),
+    Check(FAILED(reveal(GUID{99})) && actions.selections == 0 && IsIconic(root.window),
         "A missing transferred GUID must not select or restore the destination");
     actions.allowed = false;
-    Check(FAILED(frame->Reveal(tabs[1].id)) && actions.selections == 0 && IsIconic(root.window),
+    Check(FAILED(reveal(tabs[1].id)) && actions.selections == 0 && IsIconic(root.window),
         "A canceled lease must not select or restore");
     actions.allowed = true;
     HRESULT wrong_thread = S_OK;
-    std::thread worker([&] { wrong_thread = frame->Reveal(tabs[1].id); });
+    std::thread worker([&] { wrong_thread = reveal(tabs[1].id); });
     worker.join();
     Check(FAILED(wrong_thread) && actions.selections == 0 && IsIconic(root.window),
         "Only the owning UI thread may select or restore");
     actions.fail = true;
-    Check(FAILED(frame->Reveal(tabs[1].id)) && IsIconic(root.window),
+    Check(FAILED(reveal(tabs[1].id)) && IsIconic(root.window),
         "A failed selection must not restore");
     actions.fail = false;
     actions.cancel = true;
-    Check(FAILED(frame->Reveal(tabs[1].id)) && IsIconic(root.window),
+    Check(FAILED(reveal(tabs[1].id)) && IsIconic(root.window),
         "Cancellation during selection must prevent restore");
     actions.cancel = false;
     actions.allowed = true;
     actions.retire_on_select = frame.get();
-    Check(FAILED(frame->Reveal(tabs[1].id)) && IsIconic(root.window),
+    Check(FAILED(reveal(tabs[1].id)) && IsIconic(root.window),
         "Detachment clearing the lease callback during selection must prevent restore");
     actions.retire_on_select = nullptr;
     quickky::NativeFrameTestAccess::Available(*frame, [&actions] { return actions.allowed; });
     actions.switch_on_restore = true;
-    const auto switched = frame->Reveal(tabs[1].id);
+    const auto switched = reveal(tabs[1].id);
     Check(!actions.switch_on_restore && !IsIconic(root.window) && actions.selected == &first_browser,
         "Deliver the controlled tab switch inside the restore call");
     Check(FAILED(switched),
         "A tab switch during restore must stop foreground activation and success reporting");
     ShowWindow(root.window, SW_MINIMIZE);
     actions.selected = &first_browser;
-    Check(frame->Reveal(tabs[1].id) == S_OK && !IsIconic(root.window) &&
+    Check(reveal(tabs[1].id) == E_NOINTERFACE && !IsIconic(root.window) &&
         (IsZoomed(root.window) != FALSE) == maximized && actions.selected == &second_browser,
-        "Restore the previous normal/maximized state and select the transferred tab");
+        "Restore/select before reporting the unsupported public-view focus interface");
     WINDOWPLACEMENT after{sizeof(after)};
     Check(GetWindowPlacement(root.window, &after) &&
         EqualRect(&before.rcNormalPosition, &after.rcNormalPosition), "Preserve normal placement");
     const auto selections = actions.selections;
-    Check(frame->Reveal(tabs[0].id) == S_FALSE && actions.selections == selections,
-        "Do not change selection or presentation on an already restored window");
+    Check(reveal(tabs[0].id) == E_NOINTERFACE && actions.selections == selections + 1 &&
+        actions.selected == &first_browser && (IsZoomed(root.window) != FALSE) == maximized,
+        "An already restored destination still selects and requests view focus without changing placement");
     ShowWindow(root.window, SW_MINIMIZE);
     actions.destroy_on_select = root.window;
-    Check(FAILED(frame->Reveal(tabs[1].id)) && !IsWindow(root.window),
+    Check(FAILED(reveal(tabs[1].id)) && !IsWindow(root.window),
         "Window destruction during selection must prevent restore/activation");
-    Check(FAILED(frame->Reveal(tabs[1].id)), "Do not act on a destroyed target");
+    Check(FAILED(reveal(tabs[1].id)), "Do not act on a destroyed target");
 }
 }
 

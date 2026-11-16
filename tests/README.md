@@ -61,10 +61,11 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   compatibility. No test downloads or parses PDBs, starts a resolver worker, or
   attaches to Explorer. Synthetic maps do not establish another OS's compatibility.
 - `explorer.native_frame`: synthetic roots and typed fake actions check selection
-  of the transferred GUID, normal/maximized restoration, visible-window no-op,
+  of the transferred GUID, normal/maximized restoration, visible-window activation,
   missing GUID, selection failure, canceled lease, wrong thread, restore-time
   selection changes and reentrant destruction. It does not bind to Explorer or
-  establish real transfer support.
+  establish real transfer support. Unsupported COM browsers report failure rather
+  than claiming file-view focus; typed public-view focus is tested below.
 - `explorer.folder_selection`: fake public views and typed native-frame fixtures
   check selected/focused child PIDL encoding, empty/multiple selection, strict
   bounds and malformed input, delayed view/item readiness, apply-once confirmation,
@@ -72,7 +73,13 @@ workspace bridge check and twenty-second instance/native-ABI checks.
   reentrant writes. They also distinguish initial-folder readiness from later
   navigation, continue without repeating selection writes, ignore unpressed hover
   while retaining drag/click/key protection, and reject destination input during
-  the source's COM reads before native removal. Native-frame fixtures expose a separate `IShellBrowser`
+  the source's COM reads before native removal. Owned Win32 children verify file-view
+  keyboard focus when foreground policy permits, for normal/maximized/minimized
+  destinations with and without selected files, preserved placement/selection,
+  rejection of foreign/replaced views and recreated view windows, and cancellation
+  before or inside focus. Foreground denial must not attempt keyboard focus;
+  a controlled foreground switch is checked when Windows permits it. These checks do not establish
+  real Explorer foreground-policy acceptance. Native-frame fixtures expose a separate `IShellBrowser`
   service through `IServiceProvider`/`SID_STopLevelBrowser` and explicitly reject
   direct `IShellBrowser` and `IExplorerBrowser` queries on the opaque browser,
   matching the native-host service contract rather than an embedded control.

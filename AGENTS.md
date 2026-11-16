@@ -35,7 +35,8 @@ or complete native-tab replacement.
    Acknowledged loading resumes the same created GUID with preserved restore
    progress on later passes, never another add. A peer input-change event protects
    the final source-removal decision; changed state preserves the source. Reveal a
-   minimized main frame only after confirmed native transfer. Native
+   destination and focus its file view only after confirmed native transfer,
+   restoring minimized frames without changing normal/maximized placement. Native
    groups remain native on exit; uncertain transfers are quarantined without
    automatic retry. Timeout cannot roll back an already-started native call.
 4. Support `--stop`, read-only `--snapshot`, bounded `--observe-ms N`, and a

@@ -41,7 +41,12 @@ someone else's session. Never terminate Explorer to clean up a test.
    disappearance from Shell automation. Preserve the remaining tabs of a multi-tab
    source until each is individually confirmed and removed.
    Confirm actual selected items/focus/visibility, not only the
-   selected tab GUID. Repeat with a minimized main frame and slow-loading views.
+   selected tab GUID. For normal, maximized and minimized main frames, require
+   foreground activation and keyboard focus inside the newly collected tab's file
+   view, including empty folders. Arrow/type navigation must go to that view, not
+   the address bar, old tab or source. Preserve normal/maximized placement and
+   repeat with slow-loading views. These keyboard checks are distinct from a
+   file's focused-item flag.
    During capture/restore, change the source/target selection or active tab and
    stop the controller; a canceled/failed transfer must not discard the original.
 6. Stop the controller immediately after creation and while reconciliation is
